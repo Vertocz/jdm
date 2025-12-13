@@ -1,5 +1,5 @@
 // store/useSalleStore.ts
-import create from 'zustand';
+import { create } from 'zustand';
 
 type State = {
   annee: number;
