@@ -1,9 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import CandidatCard from "@/app/components/CandidatCard";
+import CandidatCardModal from "@/app/components/CandidatCardModal";
 import { calculAge, pointsPourAge } from "@/utils/fonctions";
+import { useSearchCandidats } from "@/app/hooks/useSearchCandidats";
+import { useClickOutside } from "@/app/hooks/useClickOutside";
+import { useAddCandidat } from "@/app/hooks/useAddCandidat";
+
+interface CandidatRecherche {
+  id: string;
+  nom: string;
+  ddn: string;
+  description: string;
+  photo: string;
+  wikidata_id: string;
+}
 
 export default function SalleAttente() {
   const [user, setUser] = useState<any | null>(null);
@@ -12,6 +25,14 @@ export default function SalleAttente() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [years, setYears] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Recherche de candidats
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCandidat, setSelectedCandidat] = useState<CandidatRecherche | null>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const { suggestions, loading: searchLoading, showSuggestions, setShowSuggestions } = useSearchCandidats(searchQuery);
+  
+  useClickOutside(searchRef, () => setShowSuggestions(false));
 
   useEffect(() => {
     const init = async () => {
@@ -72,6 +93,20 @@ export default function SalleAttente() {
     }
 
     setYears(uniqueYears);
+  };
+
+  const handleSelectCandidat = (candidat: CandidatRecherche) => {
+    setSelectedCandidat(candidat);
+    setShowSuggestions(false);
+    setSearchQuery("");
+  };
+
+  const handleCandidatAdded = () => {
+    // Recharger les paris après ajout
+    if (user) {
+      loadParis(user.id);
+    }
+    setSelectedCandidat(null);
   };
 
   if (loading) return <p>Chargement...</p>;
@@ -160,7 +195,130 @@ export default function SalleAttente() {
         )}
       </div>
 
-      <h2>Paris en cours</h2>
+      {/* Barre de recherche pour ajouter un candidat */}
+      <div
+        ref={searchRef}
+        style={{
+          position: "relative",
+          marginBottom: "40px",
+          marginTop: "30px",
+        }}
+      >
+        <h2 style={{ marginBottom: "20px" }}>Ajouter un candidat</h2>
+
+        <div style={{ position: "relative" }}>
+          <input
+            type="text"
+            placeholder="Rechercher une personnalité à ajouter..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => {
+              if (suggestions.length > 0) setShowSuggestions(true);
+            }}
+            style={{
+              width: "100%",
+              padding: "15px 20px",
+              fontSize: "1.1rem",
+              border: "2px solid var(--text)",
+              borderRadius: "12px",
+              background: "rgba(78, 57, 41, 0.2)",
+              color: "var(--text)",
+              fontFamily: "Quicksand, sans-serif",
+              outline: "none",
+              transition: "all 0.2s ease",
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && suggestions.length > 0) {
+                handleSelectCandidat(suggestions[0]);
+              }
+            }}
+          />
+
+          {searchLoading && (
+            <div
+              style={{
+                position: "absolute",
+                right: "15px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--c2)",
+              }}
+            >
+              Recherche...
+            </div>
+          )}
+        </div>
+
+        {/* Suggestions */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div
+            className="suggestions-list"
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              right: 0,
+              marginTop: "8px",
+              background: "var(--card-bg)",
+              border: "2px solid var(--c2)",
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 8px 20px rgba(0, 0, 0, 0.4)",
+              zIndex: 100,
+            }}
+          >
+            {suggestions.map((candidat) => (
+              <div
+                key={candidat.id}
+                onClick={() => handleSelectCandidat(candidat)}
+                style={{
+                  padding: "15px 20px",
+                  cursor: "pointer",
+                  borderBottom: "1px solid rgba(219, 135, 143, 0.2)",
+                  transition: "background 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(219, 135, 143, 0.2)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <div style={{ fontWeight: "700", color: "var(--c2)", marginBottom: "4px" }}>
+                  {candidat.nom}
+                </div>
+                {candidat.description && (
+                  <div style={{ fontSize: "0.9rem", color: "rgba(241, 235, 219, 0.7)" }}>
+                    {candidat.description}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showSuggestions && searchQuery.length >= 2 && suggestions.length === 0 && !searchLoading && (
+          <div
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: 0,
+              right: 0,
+              marginTop: "8px",
+              padding: "15px 20px",
+              background: "var(--card-bg)",
+              border: "2px solid var(--c1)",
+              borderRadius: "12px",
+              color: "rgba(241, 235, 219, 0.7)",
+              textAlign: "center",
+            }}
+          >
+            Aucune personnalité vivante trouvée
+          </div>
+        )}
+      </div>
+
+      <h2>Paris en cours ({enCours.length}/10)</h2>
       {enCours.length === 0 && <p>Aucun pari en cours pour {selectedYear}.</p>}
       <div className="cards-grid">
         {enCours.map((p) => (
@@ -175,6 +333,19 @@ export default function SalleAttente() {
           <CandidatCard key={p.id} candidat={p.candidats} />
         ))}
       </div>
+
+      {/* Modal avec carte candidat */}
+      {selectedCandidat && (
+        <CandidatCardModal
+          candidat={selectedCandidat}
+          onClose={() => setSelectedCandidat(null)}
+          user={user}
+          saison={selectedYear}
+          parisEnCours={enCours.length}
+          existingPariIds={enCours.map(p => p.candidats.wikidata_id)}
+          onCandidatAdded={handleCandidatAdded}
+        />
+      )}
     </div>
   );
 }

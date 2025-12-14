@@ -1,9 +1,11 @@
 // app/page.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useState, useRef } from "react";
 import CandidatCardModal from "./components/CandidatCardModal";
+import { useSupabaseAuth } from "./hooks/useSupabaseAuth";
+import { useClickOutside } from "./hooks/useClickOutside";
+import { useSearchCandidats } from "./hooks/useSearchCandidats";
 
 interface CandidatRecherche {
   id: string;
@@ -15,68 +17,14 @@ interface CandidatRecherche {
 }
 
 export default function Home() {
-  const [user, setUser] = useState<any | null>(null);
+  const { user } = useSupabaseAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<CandidatRecherche[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selectedCandidat, setSelectedCandidat] = useState<CandidatRecherche | null>(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data?.user || null);
-    };
-    load();
-
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setUser(session?.user ?? null);
-      }
-    );
-
-    return () => subscription.subscription.unsubscribe();
-  }, []);
-
-  // Fermer les suggestions si on clique en dehors
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Recherche avec debounce
-  useEffect(() => {
-    if (searchQuery.trim().length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(
-          `/api/recherche?q=${encodeURIComponent(searchQuery)}`
-        );
-        const data = await response.json();
-        setSuggestions(data.candidats || []);
-        setShowSuggestions(true);
-      } catch (error) {
-        console.error("Erreur recherche:", error);
-        setSuggestions([]);
-      }
-      setLoading(false);
-    }, 500); // Attendre 500ms après la dernière frappe
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const { suggestions, loading, showSuggestions, setShowSuggestions } = useSearchCandidats(searchQuery);
+  
+  useClickOutside(searchRef, () => setShowSuggestions(false));
 
   const handleSelectCandidat = (candidat: CandidatRecherche) => {
     setSelectedCandidat(candidat);
@@ -129,7 +77,7 @@ export default function Home() {
               width: "100%",
               padding: "15px 20px",
               fontSize: "1.1rem",
-              border: "2px solid var(--c1)",
+              border: "2px solid var(--text)",
               borderRadius: "12px",
               background: "rgba(78, 57, 41, 0.2)",
               color: "var(--text)",
@@ -234,7 +182,7 @@ export default function Home() {
           background: "rgba(78, 57, 41, 0.7)",
           padding: "0px 20px",
           borderRadius: "15px",
-          border: "3px solid var(--c1)",
+          border: "3px solid var(--text)",
         }}
       >
         <h3 style={{ color: "var(--c2)", marginBottom: "15px" }}>Barème de points</h3>
