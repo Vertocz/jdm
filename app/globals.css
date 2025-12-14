@@ -808,7 +808,7 @@ button {
   }
 
   .classement-item {
-    flex-direction: column;
+    flex-direction: row;
     text-align: center;
     gap: 10px;
   }

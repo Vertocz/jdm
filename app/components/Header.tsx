@@ -126,7 +126,7 @@ export default function Header() {
                 className="btn-primary" 
                 onClick={() => setShowAuthModal(true)}
               >
-                Connexion
+                Connexion/Inscription
               </button>
             )}
           </div>
@@ -177,17 +177,20 @@ export default function Header() {
               Favoris
             </Link>
             
-            {user && (
-              <button 
-                className="mobile-link" 
-                onClick={() => {
+            <button
+              className="mobile-link"
+              onClick={() => {
+                if (user) {
                   signOut();
-                  setShowMobileMenu(false);
-                }}
-              >
-                Déconnexion
-              </button>
-            )}
+                } else {
+                  setShowAuthModal(true);
+                }
+                setShowMobileMenu(false);
+              }}
+            >
+              {user ? "Déconnexion" : "Connexion/Inscription"}
+            </button>
+
           </div>
         )}
       </header>
