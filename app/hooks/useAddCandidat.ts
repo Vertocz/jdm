@@ -23,7 +23,10 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
   const [loading, setLoading] = useState(false);
 
   const addCandidat = async (candidat: CandidatRecherche, saison: number) => {
+    console.log("🚀 Début addCandidat", { candidat, saison, userId });
+    
     if (!userId) {
+      console.log("❌ Pas d'userId");
       return { success: false, error: "Vous devez être connecté" };
     }
 
@@ -31,15 +34,19 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
 
     try {
       // 1. Vérifier le nombre de paris en cours pour cette saison
+      console.log("📊 Vérification du nombre de paris...");
       const { data: parisEnCours, error: countError } = await supabase
         .from('paris')
         .select('id', { count: 'exact' })
         .eq('joueur', userId)
         .eq('saison', saison);
 
+      console.log("Résultat count:", { parisEnCours, countError });
+
       if (countError) throw countError;
 
       if (parisEnCours && parisEnCours.length >= 10) {
+        console.log("❌ Déjà 10 paris");
         setLoading(false);
         return { 
           success: false, 
@@ -48,11 +55,14 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
       }
 
       // 2. Vérifier si le candidat existe déjà dans la table candidats
+      console.log("🔍 Recherche du candidat existant...");
       const { data: existingCandidat, error: searchError } = await supabase
         .from('candidats')
         .select('id')
         .eq('wikidata_id', candidat.wikidata_id)
         .maybeSingle();
+
+      console.log("Résultat recherche:", { existingCandidat, searchError });
 
       if (searchError) throw searchError;
 
@@ -60,9 +70,11 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
 
       if (existingCandidat) {
         // Le candidat existe déjà
+        console.log("✅ Candidat existe déjà, id:", existingCandidat.id);
         candidatId = existingCandidat.id;
 
         // Vérifier si le joueur a déjà parié sur ce candidat cette saison
+        console.log("🔍 Vérification pari existant...");
         const { data: existingPari, error: pariCheckError } = await supabase
           .from('paris')
           .select('id')
@@ -71,9 +83,12 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
           .eq('saison', saison)
           .maybeSingle();
 
+        console.log("Résultat pari existant:", { existingPari, pariCheckError });
+
         if (pariCheckError) throw pariCheckError;
 
         if (existingPari) {
+          console.log("❌ Pari existe déjà");
           setLoading(false);
           return { 
             success: false, 
@@ -82,6 +97,7 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
         }
       } else {
         // 3. Insérer le nouveau candidat
+        console.log("➕ Insertion nouveau candidat...");
         const { data: newCandidat, error: insertError } = await supabase
           .from('candidats')
           .insert({
@@ -95,11 +111,14 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
           .select('id')
           .single();
 
+        console.log("Résultat insertion:", { newCandidat, insertError });
+
         if (insertError) throw insertError;
         candidatId = newCandidat.id;
       }
 
       // 4. Créer le pari
+      console.log("➕ Création du pari...");
       const { error: pariError } = await supabase
         .from('paris')
         .insert({
@@ -109,17 +128,26 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
           mort: false,
         });
 
+      console.log("Résultat création pari:", { pariError });
+
       if (pariError) throw pariError;
 
+      console.log("✅ Succès !");
       setLoading(false);
       return { success: true };
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erreur lors de l'ajout du candidat:", error);
+      console.error("Détails de l'erreur:", {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code
+      });
       setLoading(false);
       return { 
         success: false, 
-        error: "Une erreur est survenue lors de l'ajout" 
+        error: error?.message || "Une erreur est survenue lors de l'ajout" 
       };
     }
   };

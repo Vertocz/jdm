@@ -148,7 +148,14 @@ export default function CandidatCardModal({
         </button>
 
         {/* Carte Panini */}
-        <div className="panini-card panini-card-modal" style={{ margin: 0 }}>
+        <div 
+          className="panini-card panini-card-modal" 
+          style={{ 
+            margin: 0,
+            transform: 'none !important',
+            transition: 'none !important'
+          }}
+        >
           <div className="panini-header">
             <h3 className="panini-name">{candidat.nom}</h3>
           </div>

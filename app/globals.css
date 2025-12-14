@@ -791,6 +791,27 @@ button {
   color: var(--text);
 }
 
+/* Empêcher la carte modal de grossir au hover */
+.panini-card-modal {
+  pointer-events: auto;
+}
+
+.panini-card-modal:hover {
+  transform: none !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Désactiver le ::before en modal pour qu'il ne bloque pas les clics */
+.panini-card-modal::before {
+  display: none !important;
+}
+
+.panini-card-modal .panini-info {
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .header-style {

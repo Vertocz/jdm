@@ -72,7 +72,8 @@ export default function SalleAttente() {
           ddn,
           ddd,
           description,
-          photo
+          photo,
+          wikidata_id
         )
       `)
       .eq("joueur", userId);
@@ -341,8 +342,8 @@ export default function SalleAttente() {
           onClose={() => setSelectedCandidat(null)}
           user={user}
           saison={selectedYear}
-          parisEnCours={enCours.length}
-          existingPariIds={enCours.map(p => p.candidats.wikidata_id)}
+          parisEnCours={parisForYear.length}
+          existingPariIds={parisForYear.map(p => p.candidats?.wikidata_id).filter(Boolean)}
           onCandidatAdded={handleCandidatAdded}
         />
       )}
