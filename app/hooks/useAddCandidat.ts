@@ -39,7 +39,8 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
         .from('paris')
         .select('id', { count: 'exact' })
         .eq('joueur', userId)
-        .eq('saison', saison);
+        .eq('saison', saison)
+        .eq('mort', false);
 
       console.log("Résultat count:", { parisEnCours, countError });
 
