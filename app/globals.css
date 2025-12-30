@@ -171,7 +171,7 @@ button {
 }
 
 .btn-secondary:hover {
-  background: rgba(78, 57, 41, 0.7);
+  background: var(--c2);
   transform: translateY(-2px);
 }
 

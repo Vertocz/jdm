@@ -34,7 +34,6 @@ export default function CandidatCardModal({
   onCandidatAdded,
 }: CandidatCardModalProps) {
   const [message, setMessage] = useState("");
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const { addCandidat, loading: adding } = useAddCandidat(user?.id);
 
   const age = calculAge(candidat.ddn, null);
@@ -71,12 +70,6 @@ export default function CandidatCardModal({
       return;
     }
 
-    // Ouvrir le modal de confirmation au lieu d'ajouter directement
-    setShowConfirmModal(true);
-  };
-
-  const confirmerAjout = async () => {
-    setShowConfirmModal(false);
     setMessage("");
 
     const result = await addCandidat(candidat, currentYear);
@@ -268,88 +261,6 @@ export default function CandidatCardModal({
           </div>
         </div>
       </div>
-
-      {/* Modal de confirmation */}
-      {showConfirmModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.9)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2000,
-            padding: "20px",
-          }}
-          onClick={() => setShowConfirmModal(false)}
-        >
-          <div
-            style={{
-              background: "linear-gradient(145deg, var(--card-bg) 0%, #1f3240 100%)",
-              border: "3px solid var(--c2)",
-              borderRadius: "20px",
-              padding: "30px",
-              maxWidth: "400px",
-              width: "100%",
-              textAlign: "center",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ color: "var(--c2)", marginBottom: "20px", fontSize: "1.5rem" }}>
-              Confirmer le pari
-            </h3>
-            
-            <p style={{ marginBottom: "10px", fontSize: "1.1rem", lineHeight: "1.6" }}>
-              Êtes-vous sûr de vouloir ajouter <strong style={{ color: "var(--c2)" }}>{candidat.nom}</strong> à vos paris pour {currentYear} ?
-            </p>
-            
-            <p style={{ marginBottom: "25px", fontSize: "0.95rem", color: "rgba(241, 235, 219, 0.7)", fontStyle: "italic" }}>
-              Cette action est définitive et ne peut pas être annulée.
-            </p>
-
-            <div style={{ display: "flex", gap: "15px", justifyContent: "center" }}>
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                style={{
-                  padding: "12px 24px",
-                  background: "var(--c1)",
-                  color: "var(--text)",
-                  border: "none",
-                  borderRadius: "10px",
-                  fontSize: "1rem",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                Annuler
-              </button>
-              
-              <button
-                onClick={confirmerAjout}
-                disabled={adding}
-                style={{
-                  padding: "12px 24px",
-                  background: adding ? "#888" : "var(--c2)",
-                  color: "var(--fond)",
-                  border: "none",
-                  borderRadius: "10px",
-                  fontSize: "1rem",
-                  fontWeight: "700",
-                  cursor: adding ? "not-allowed" : "pointer",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                {adding ? "Ajout..." : "Confirmer"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

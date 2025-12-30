@@ -3,13 +3,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useSignup } from "../hooks/useSignUp";
 
 export default function Header() {
+  const router = useRouter();
+  const { signup, loading: signupLoading } = useSignup();
+  
   const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [authError, setAuthError] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -57,30 +65,56 @@ export default function Header() {
   };
 
   const handleAuth = async () => {
-    const authFunction = authMode === "signup" 
-      ? supabase.auth.signUp({ email, password })
-      : supabase.auth.signInWithPassword({ email, password });
+    setAuthError("");
 
-    const { error } = await authFunction;
+    if (authMode === "signin") {
+      // Connexion
+      const { error } = await supabase.auth.signInWithPassword({ 
+        email: email.trim(), 
+        password 
+      });
 
-    if (error) {
-      alert("Erreur: " + error.message);
-      return;
+      if (error) {
+        setAuthError("Email ou mot de passe incorrect");
+        return;
+      }
+
+      setShowAuthModal(false);
+      setEmail("");
+      setPassword("");
+      router.push('/salle-attente');
+
+    } else {
+      // Inscription
+      const result = await signup({
+        email,
+        password,
+        confirmPassword,
+        displayName,
+      });
+
+      if (!result.success) {
+        setAuthError(result.error || "Erreur lors de l'inscription");
+        return;
+      }
+
+      // Succès
+      setShowAuthModal(false);
+      setEmail("");
+      setPassword("");
+      setConfirmPassword("");
+      setDisplayName("");
+      router.push('/salle-attente');
     }
-
-    if (authMode === "signup") {
-      alert("Inscription réussie ! Tu es connecté.");
-    }
-    
-    setShowAuthModal(false);
-    setEmail("");
-    setPassword("");
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    
+    // Redirection vers l'accueil après déconnexion
+    router.push('/');
   };
 
   return (
@@ -114,9 +148,9 @@ export default function Header() {
           <div className="header-actions">
             {user ? (
               <>
-                <span className="user-greeting">
-                  Bonjour <strong>{profile?.display_name ?? "Joueur"}</strong>
-                </span>
+                <Link href="/gestion" className="nav-link" style={{ whiteSpace: 'nowrap' }}>
+                  Gérer mon compte
+                </Link>
                 <button className="btn-secondary" onClick={signOut}>
                   Déconnexion
                 </button>
@@ -177,6 +211,16 @@ export default function Header() {
               Favoris
             </Link>
             
+            {user && (
+              <Link 
+                href="/gestion" 
+                className="mobile-link"
+                onClick={() => setShowMobileMenu(false)}
+              >
+                Gérer mon compte
+              </Link>
+            )}
+            
             <button
               className="mobile-link"
               onClick={() => {
@@ -210,7 +254,33 @@ export default function Header() {
               {authMode === "signin" ? "Connexion" : "Inscription"}
             </h2>
 
+            {authError && (
+              <div 
+                style={{
+                  background: "rgba(248, 113, 113, 0.2)",
+                  border: "2px solid #f87171",
+                  borderRadius: "10px",
+                  padding: "12px",
+                  marginBottom: "20px",
+                  color: "#fca5a5",
+                  fontSize: "0.95rem",
+                }}
+              >
+                {authError}
+              </div>
+            )}
+
             <div className="auth-form-modal">
+              {authMode === "signup" && (
+                <input
+                  type="text"
+                  placeholder="Pseudo (3 caractères minimum)"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="auth-input"
+                />
+              )}
+              
               <input
                 type="email"
                 placeholder="Email"
@@ -218,22 +288,48 @@ export default function Header() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="auth-input"
               />
+              
               <input
                 type="password"
-                placeholder="Mot de passe"
+                placeholder="Mot de passe (6 caractères minimum)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
+                onKeyPress={(e) => e.key === 'Enter' && authMode === 'signin' && handleAuth()}
                 className="auth-input"
               />
 
-              <button className="btn-primary-full" onClick={handleAuth}>
-                {authMode === "signin" ? "Se connecter" : "S'inscrire"}
+              {authMode === "signup" && (
+                <input
+                  type="password"
+                  placeholder="Confirmer le mot de passe"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="auth-input"
+                />
+              )}
+
+              <button 
+                className="btn-primary-full" 
+                onClick={handleAuth}
+                disabled={signupLoading}
+              >
+                {signupLoading 
+                  ? "Inscription..." 
+                  : authMode === "signin" 
+                    ? "Se connecter" 
+                    : "S'inscrire"}
               </button>
 
               <button 
                 className="btn-link"
-                onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}
+                onClick={() => {
+                  setAuthMode(authMode === "signin" ? "signup" : "signin");
+                  setAuthError("");
+                  setEmail("");
+                  setPassword("");
+                  setConfirmPassword("");
+                  setDisplayName("");
+                }}
               >
                 {authMode === "signin" 
                   ? "Pas encore de compte ? S'inscrire" 
