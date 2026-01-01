@@ -64,14 +64,16 @@ export default function JoueurPage() {
       const uniqueYears = [...new Set(data.map((p: any) => p.saison))].sort(
         (a, b) => b - a
       );
-
-      if (uniqueYears.includes(new Date().getFullYear())) {
-        setSelectedYear(new Date().getFullYear());
-      } else {
-        setSelectedYear(uniqueYears[0] ?? new Date().getFullYear());
+      
+      const currentYear = new Date().getFullYear();
+      
+      // Toujours ajouter l'année en cours dans la liste si elle n'y est pas
+      if (!uniqueYears.includes(currentYear)) {
+        uniqueYears.unshift(currentYear); // Ajoute l'année courante au début
       }
 
       setYears(uniqueYears);
+      setSelectedYear(currentYear); // Toujours sélectionner l'année en cours par défaut
       setLoading(false);
     };
 
@@ -164,7 +166,7 @@ export default function JoueurPage() {
         ))}
       </div>
 
-      <h2>Paris en cours ({selectedYear})</h2>
+      <h2>Paris en cours ({enCours.length}/10)</h2>
       {enCours.length === 0 && <p>Aucun pari en cours pour {selectedYear}.</p>}
       <div className="cards-grid">
         {enCours.map((p) => (
@@ -172,7 +174,7 @@ export default function JoueurPage() {
         ))}
       </div>
 
-      <h2>Paris gagnants ({selectedYear})</h2>
+      <h2>Paris gagnants</h2>
       {gagnants.length === 0 && <p>Aucun pari gagnant en {selectedYear}.</p>}
       <div className="cards-grid">
         {gagnants.map((p) => (

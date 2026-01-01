@@ -86,14 +86,15 @@ export default function SalleAttente() {
     setParis(data || []);
 
     const uniqueYears = [...new Set(data.map((p: any) => p.saison))].sort((a, b) => b - a);
-
-    if (uniqueYears.includes(new Date().getFullYear())) {
-      setSelectedYear(new Date().getFullYear());
-    } else {
-      setSelectedYear(uniqueYears[0] ?? new Date().getFullYear());
+    const currentYear = new Date().getFullYear();
+    
+    // Toujours ajouter l'année en cours dans la liste si elle n'y est pas
+    if (!uniqueYears.includes(currentYear)) {
+      uniqueYears.unshift(currentYear); // Ajoute l'année courante au début
     }
-
+    
     setYears(uniqueYears);
+    setSelectedYear(currentYear); // Toujours sélectionner l'année en cours par défaut
   };
 
   const handleSelectCandidat = (candidat: CandidatRecherche) => {
@@ -220,7 +221,7 @@ export default function SalleAttente() {
               width: "100%",
               padding: "15px 20px",
               fontSize: "1.1rem",
-              border: "2px solid var(--text)",
+              border: "2px solid var(--c1)",
               borderRadius: "12px",
               background: "rgba(78, 57, 41, 0.2)",
               color: "var(--text)",
