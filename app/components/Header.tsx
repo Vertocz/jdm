@@ -53,15 +53,19 @@ export default function Header() {
       .maybeSingle();
 
     if (!prof) {
-      const newProfile = {
-        user_id: userId,
-        display_name: "Nouveau joueur",
-      };
-      await supabase.from("profiles").insert(newProfile);
-      setProfile(newProfile);
-    } else {
-      setProfile(prof);
+      // Le trigger Supabase n'a pas encore créé le profil — on attend 1s et on réessaie
+      // On ne fait jamais d'INSERT ici pour éviter les doublons
+      await new Promise(r => setTimeout(r, 1000));
+      const { data: retry } = await supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("user_id", userId)
+        .maybeSingle();
+      setProfile(retry ?? null);
+      return;
     }
+
+    setProfile(prof);
   };
 
   const handleAuth = async () => {
