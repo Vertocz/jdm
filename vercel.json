@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/check-deaths",
-      "schedule": "59 23 * * *"
+      "schedule": "*/30 * * * *"
     }
   ]
 }
