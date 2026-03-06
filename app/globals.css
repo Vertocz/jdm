@@ -891,6 +891,12 @@ button {
   border-bottom: none;
 }
 
+.suggestion-item:hover {
+  background: rgba(219, 135, 143, 0.2);
+  transition: background 0.2s ease;
+}
+
+
 /* Page In Memoriam en noir et blanc */
 body.page-memoriam {
   background: #000 !important;

@@ -2,21 +2,16 @@
 "use client";
 
 import Image from "next/image";
-import { calculAge, pointsPourAge } from "@/utils/fonctions";
+import { User } from "@supabase/supabase-js";
+import { calculAge, pointsPourAge, capitalizeFirst } from "@/utils/fonctions";
 import { useState } from "react";
 import { useAddCandidat } from "@/app/hooks/useAddCandidat";
+import { CandidatRecherche } from "@/types";
 
 interface CandidatCardModalProps {
-  candidat: {
-    id: string;
-    nom: string;
-    ddn: string;
-    description?: string;
-    photo?: string;
-    wikidata_id: string;
-  };
+  candidat: CandidatRecherche;
   onClose: () => void;
-  user?: any;
+  user?: User | null;
   // Props optionnelles pour la salle d'attente
   saison?: number;
   parisEnCours?: number;
@@ -44,34 +39,20 @@ export default function CandidatCardModal({
     ? `https://commons.wikimedia.org/wiki/Special:FilePath/${candidat.photo}`
     : "/candidat.png";
 
-  // Capitaliser la première lettre de la description
-  const capitalizeFirst = (text: string) => {
-    if (!text) return "";
-    return text.charAt(0).toUpperCase() + text.slice(1);
-  };
-
-  // Vérifier si on peut ajouter le candidat
-  const currentYear = saison || new Date().getFullYear();
-  const canAdd = user && (parisEnCours !== undefined ? parisEnCours < 10 : true);
+  const currentYear = saison ?? new Date().getFullYear();
+  const canAdd = !!user && (parisEnCours !== undefined ? parisEnCours < 10 : true);
   const alreadyAdded = existingPariIds?.includes(candidat.wikidata_id);
+  const showButton = user && !alreadyAdded && canAdd;
+  const disabledMessage = alreadyAdded
+    ? "Déjà dans ta salle d'attente"
+    : !canAdd
+    ? "Tu as déjà 10 candidats"
+    : null;
 
-  const ajouterPari = async () => {
-    if (!user) {
-      setMessage("Tu dois être connecté pour ajouter un pari !");
-      return;
-    }
-
-    if (!canAdd) {
-      setMessage("Tu as déjà 10 paris cette année !");
-      return;
-    }
-
-    if (alreadyAdded) {
-      setMessage("Tu as déjà parié sur ce candidat cette année !");
-      return;
-    }
-
-    // Ouvrir le modal de confirmation au lieu d'ajouter directement
+  const ajouterPari = () => {
+    if (!user) { setMessage("Tu dois être connecté pour ajouter un pari !"); return; }
+    if (!canAdd) { setMessage("Tu as déjà 10 paris cette année !"); return; }
+    if (alreadyAdded) { setMessage("Tu as déjà parié sur ce candidat cette année !"); return; }
     setShowConfirmModal(true);
   };
 
@@ -83,35 +64,23 @@ export default function CandidatCardModal({
 
     if (result.success) {
       setMessage("✅ Pari ajouté avec succès !");
-      if (onCandidatAdded) {
-        onCandidatAdded();
-      }
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      onCandidatAdded?.();
+      setTimeout(onClose, 1500);
     } else {
       setMessage(`❌ ${result.error}`);
     }
   };
 
-  // Déterminer si on doit afficher le bouton
-  const showButton = user && !alreadyAdded && canAdd;
-  const disabledMessage = alreadyAdded 
-    ? "Déjà dans ta salle d'attente" 
-    : !canAdd 
-    ? "Tu as déjà 10 candidats" 
-    : null;
-
   return (
     <div
       className="modal-overlay"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Fiche de ${candidat.nom}`}
       style={{
         position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
+        top: 0, left: 0, right: 0, bottom: 0,
         backgroundColor: "rgba(0, 0, 0, 0.8)",
         display: "flex",
         alignItems: "center",
@@ -121,22 +90,17 @@ export default function CandidatCardModal({
       }}
     >
       <div
-        style={{
-          position: "relative",
-          maxWidth: "350px",
-          width: "100%",
-        }}
+        style={{ position: "relative", maxWidth: "350px", width: "100%" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Bouton fermer - position responsive */}
+        {/* Bouton fermer */}
         <button
           onClick={onClose}
+          aria-label="Fermer"
           style={{
             position: "absolute",
-            top: "-15px",
-            right: "-15px",
-            width: "40px",
-            height: "40px",
+            top: "-15px", right: "-15px",
+            width: "40px", height: "40px",
             borderRadius: "50%",
             background: "var(--c2)",
             color: "var(--fond)",
@@ -155,22 +119,15 @@ export default function CandidatCardModal({
         </button>
 
         {/* Carte Panini */}
-        <div 
-          className="panini-card panini-card-modal" 
-          style={{ 
-            margin: 0,
-            transform: 'none !important',
-            transition: 'none !important'
-          }}
+        <div
+          className="panini-card panini-card-modal"
+          style={{ margin: 0, transform: "none !important", transition: "none !important" }}
         >
           <div className="panini-header">
             <h3 className="panini-name">{candidat.nom}</h3>
           </div>
 
-          <div
-            className="panini-photo-container"
-            style={{ height: "300px" }}
-          >
+          <div className="panini-photo-container" style={{ height: "300px" }}>
             <Image
               src={photoUrl}
               alt={candidat.nom}
@@ -178,8 +135,7 @@ export default function CandidatCardModal({
               height={300}
               className="panini-photo"
               onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = "/candidat.png";
+                (e.target as HTMLImageElement).src = "/candidat.png";
               }}
             />
           </div>
@@ -187,7 +143,8 @@ export default function CandidatCardModal({
           <div className="panini-info">
             <div className="panini-dates">
               <span className="panini-value">
-                Né⸱e le {candidat.ddn
+                Né⸱e le{" "}
+                {candidat.ddn
                   ? new Date(candidat.ddn).toLocaleDateString("fr-FR")
                   : "—"}
               </span>
@@ -196,11 +153,15 @@ export default function CandidatCardModal({
             <div className="panini-stats">
               <div className="panini-stat">
                 <span className="panini-stat-label">Âge</span>
-                <span className="panini-stat-value">{age ?? "—"} an{age && age > 1 ? "s" : ""}</span>
+                <span className="panini-stat-value">
+                  {age ?? "—"} an{age && age > 1 ? "s" : ""}
+                </span>
               </div>
               <div className="panini-stat panini-stat-points">
                 <span className="panini-stat-label">Points</span>
-                <span className="panini-stat-value">{points} pt{points > 1 ? "s" : ""}</span>
+                <span className="panini-stat-value">
+                  {points} pt{points > 1 ? "s" : ""}
+                </span>
               </div>
             </div>
 
@@ -208,7 +169,6 @@ export default function CandidatCardModal({
               <p className="panini-description">{capitalizeFirst(candidat.description)}</p>
             )}
 
-            {/* Bouton ajouter pari ou message d'info */}
             {user && (
               <>
                 {showButton ? (
@@ -274,10 +234,7 @@ export default function CandidatCardModal({
         <div
           style={{
             position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            top: 0, left: 0, right: 0, bottom: 0,
             backgroundColor: "rgba(0, 0, 0, 0.9)",
             display: "flex",
             alignItems: "center",
@@ -285,6 +242,8 @@ export default function CandidatCardModal({
             zIndex: 2000,
             padding: "20px",
           }}
+          role="dialog"
+          aria-modal="true"
           onClick={() => setShowConfirmModal(false)}
         >
           <div
@@ -302,11 +261,13 @@ export default function CandidatCardModal({
             <h3 style={{ color: "var(--c2)", marginBottom: "20px", fontSize: "1.5rem" }}>
               Confirmer le pari
             </h3>
-            
+
             <p style={{ marginBottom: "10px", fontSize: "1.1rem", lineHeight: "1.6" }}>
-              Êtes-vous sûr de vouloir ajouter <strong style={{ color: "var(--c2)" }}>{candidat.nom}</strong> à vos paris pour {currentYear} ?
+              Êtes-vous sûr de vouloir ajouter{" "}
+              <strong style={{ color: "var(--c2)" }}>{candidat.nom}</strong>{" "}
+              à vos paris pour {currentYear} ?
             </p>
-            
+
             <p style={{ marginBottom: "25px", fontSize: "0.95rem", color: "rgba(241, 235, 219, 0.7)", fontStyle: "italic" }}>
               Cette action est définitive et ne peut pas être annulée.
             </p>
@@ -328,7 +289,7 @@ export default function CandidatCardModal({
               >
                 Annuler
               </button>
-              
+
               <button
                 onClick={confirmerAjout}
                 disabled={adding}

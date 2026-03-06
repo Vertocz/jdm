@@ -1,6 +1,5 @@
-//lib/supabaseClient.ts
-
-import { createClient } from '@supabase/supabase-js';
+// lib/supabaseClient.ts   ← renommé de .tsx en .ts (aucun JSX ici)
+import { createClient } from "@supabase/supabase-js";
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

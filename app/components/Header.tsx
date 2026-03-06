@@ -3,17 +3,20 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import { useSupabaseAuth } from "@/app/hooks/useSupabaseAuth";
 import { useSignup } from "../hooks/useSignUp";
+import { Profile } from "@/types";
 
 export default function Header() {
   const router = useRouter();
+  const { user } = useSupabaseAuth();
   const { signup, loading: signupLoading } = useSignup();
-  
-  const [user, setUser] = useState<any | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+
+  const [profile, setProfile] = useState<Pick<Profile, "display_name"> | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -23,29 +26,7 @@ export default function Header() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
 
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setUser(data.user);
-        await fetchProfile(data.user.id);
-      }
-    };
-
-    load();
-
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        const current = session?.user ?? null;
-        setUser(current);
-        if (current) await fetchProfile(current.id);
-        else setProfile(null);
-      }
-    );
-
-    return () => subscription.subscription.unsubscribe();
-  }, []);
-
+  // Charger le profil quand l'utilisateur change
   const fetchProfile = async (userId: string) => {
     const { data: prof } = await supabase
       .from("profiles")
@@ -54,9 +35,8 @@ export default function Header() {
       .maybeSingle();
 
     if (!prof) {
-      // Le trigger Supabase n'a pas encore créé le profil — on attend 1s et on réessaie
-      // On ne fait jamais d'INSERT ici pour éviter les doublons
-      await new Promise(r => setTimeout(r, 1000));
+      // Attendre que le trigger Supabase crée le profil
+      await new Promise((r) => setTimeout(r, 1000));
       const { data: retry } = await supabase
         .from("profiles")
         .select("display_name")
@@ -65,7 +45,6 @@ export default function Header() {
       setProfile(retry ?? null);
       return;
     }
-
     setProfile(prof);
   };
 
@@ -73,91 +52,66 @@ export default function Header() {
     setAuthError("");
 
     if (authMode === "signin") {
-      // Connexion
-      const { error } = await supabase.auth.signInWithPassword({ 
-        email: email.trim(), 
-        password 
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
       });
-
-      if (error) {
-        setAuthError("Email ou mot de passe incorrect");
-        return;
-      }
+      if (error) { setAuthError("Email ou mot de passe incorrect"); return; }
 
       setShowAuthModal(false);
       setEmail("");
       setPassword("");
-      router.push('/salle-attente');
-
+      router.push("/salle-attente");
     } else {
-      // Inscription
-      const result = await signup({
-        email,
-        password,
-        confirmPassword,
-        displayName,
-      });
+      const result = await signup({ email, password, confirmPassword, displayName });
+      if (!result.success) { setAuthError(result.error ?? "Erreur lors de l'inscription"); return; }
 
-      if (!result.success) {
-        setAuthError(result.error || "Erreur lors de l'inscription");
-        return;
-      }
-
-      // Succès
       setShowAuthModal(false);
       setEmail("");
       setPassword("");
       setConfirmPassword("");
       setDisplayName("");
-      router.push('/salle-attente');
+      router.push("/salle-attente");
     }
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    setUser(null);
     setProfile(null);
-    
-    // Redirection vers l'accueil après déconnexion
-    router.push('/');
+    router.push("/");
+  };
+
+  const resetAuthForm = () => {
+    setAuthMode(authMode === "signin" ? "signup" : "signin");
+    setAuthError("");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setDisplayName("");
   };
 
   return (
     <>
       <header className="header-modern">
         <div className="header-container">
-          {/* Logo / Titre */}
+          {/* Logo */}
           <Link href="/" className="header-logo">
-            <Image
-              src="/logo.png"
-              alt=""
-              width={80}
-              height={80}></Image>
+            <Image src="/logo.png" alt="" width={80} height={80} />
           </Link>
 
           {/* Navigation desktop */}
           <nav className="nav-desktop">
-            {user && (
-              <Link href="/salle-attente" className="nav-link">
-                Ma salle
-              </Link>
-            )}
-            <Link href="/classement" className="nav-link">
-              Classement
-            </Link>
-            <Link href="/in-memoriam" className="nav-link">
-              In Memoriam
-            </Link>
-            <Link href="/favoris" className="nav-link">
-              Favoris
-            </Link>
+            {user && <Link href="/salle-attente" className="nav-link">Ma salle</Link>}
+            <Link href="/classement" className="nav-link">Classement</Link>
+            <Link href="/in-memoriam" className="nav-link">In Memoriam</Link>
+            <Link href="/favoris" className="nav-link">Favoris</Link>
           </nav>
 
           {/* Actions utilisateur */}
           <div className="header-actions">
             {user ? (
               <>
-                <Link href="/gestion" className="nav-link" style={{ whiteSpace: 'nowrap' }}>
+                <Link href="/gestion" className="nav-link" style={{ whiteSpace: "nowrap" }}>
                   Gérer mon compte
                 </Link>
                 <button className="btn-secondary" onClick={signOut}>
@@ -165,24 +119,22 @@ export default function Header() {
                 </button>
               </>
             ) : (
-              <button 
-                className="btn-primary" 
-                onClick={() => setShowAuthModal(true)}
-              >
+              <button className="btn-primary" onClick={() => setShowAuthModal(true)}>
                 Connexion/Inscription
               </button>
             )}
           </div>
 
           {/* Bouton hamburger mobile */}
-          <button 
+          <button
             className="hamburger-btn"
             onClick={() => setShowMobileMenu(!showMobileMenu)}
             aria-label="Menu"
+            aria-expanded={showMobileMenu}
           >
-            <span className={`hamburger-line ${showMobileMenu ? 'open' : ''}`}></span>
-            <span className={`hamburger-line ${showMobileMenu ? 'open' : ''}`}></span>
-            <span className={`hamburger-line ${showMobileMenu ? 'open' : ''}`}></span>
+            <span className={`hamburger-line ${showMobileMenu ? "open" : ""}`} />
+            <span className={`hamburger-line ${showMobileMenu ? "open" : ""}`} />
+            <span className={`hamburger-line ${showMobileMenu ? "open" : ""}`} />
           </button>
         </div>
 
@@ -190,81 +142,49 @@ export default function Header() {
         {showMobileMenu && (
           <div className="mobile-menu">
             {user && (
-              <Link 
-                href="/salle-attente" 
-                className="mobile-link"
-                onClick={() => setShowMobileMenu(false)}
-              >
+              <Link href="/salle-attente" className="mobile-link" onClick={() => setShowMobileMenu(false)}>
                 Ma salle
               </Link>
             )}
-            <Link 
-              href="/classement" 
-              className="mobile-link"
-              onClick={() => setShowMobileMenu(false)}
-            >
-              Classement
-            </Link>
-            <Link 
-              href="/in-memoriam" 
-              className="mobile-link"
-              onClick={() => setShowMobileMenu(false)}
-            >
-              In Memoriam
-            </Link>
-            <Link 
-              href="/favoris" 
-              className="mobile-link"
-              onClick={() => setShowMobileMenu(false)}
-            >
-              Favoris
-            </Link>
-            
+            <Link href="/classement" className="mobile-link" onClick={() => setShowMobileMenu(false)}>Classement</Link>
+            <Link href="/in-memoriam" className="mobile-link" onClick={() => setShowMobileMenu(false)}>In Memoriam</Link>
+            <Link href="/favoris" className="mobile-link" onClick={() => setShowMobileMenu(false)}>Favoris</Link>
             {user && (
-              <Link 
-                href="/gestion" 
-                className="mobile-link"
-                onClick={() => setShowMobileMenu(false)}
-              >
+              <Link href="/gestion" className="mobile-link" onClick={() => setShowMobileMenu(false)}>
                 Gérer mon compte
               </Link>
             )}
-            
             <button
               className="mobile-link"
               onClick={() => {
-                if (user) {
-                  signOut();
-                } else {
-                  setShowAuthModal(true);
-                }
+                user ? signOut() : setShowAuthModal(true);
                 setShowMobileMenu(false);
               }}
             >
               {user ? "Déconnexion" : "Connexion/Inscription"}
             </button>
-
           </div>
         )}
       </header>
 
       {/* Modal d'authentification */}
       {showAuthModal && (
-        <div className="modal-overlay" onClick={() => setShowAuthModal(false)}>
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={authMode === "signin" ? "Connexion" : "Inscription"}
+          onClick={() => setShowAuthModal(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button 
-              className="modal-close"
-              onClick={() => setShowAuthModal(false)}
-            >
-              ✕
-            </button>
+            <button className="modal-close" onClick={() => setShowAuthModal(false)} aria-label="Fermer">✕</button>
 
             <h2 className="modal-title">
               {authMode === "signin" ? "Connexion" : "Inscription"}
             </h2>
 
             {authError && (
-              <div 
+              <div
                 style={{
                   background: "rgba(248, 113, 113, 0.2)",
                   border: "2px solid #f87171",
@@ -289,7 +209,7 @@ export default function Header() {
                   className="auth-input"
                 />
               )}
-              
+
               <input
                 type="email"
                 placeholder="Email"
@@ -297,13 +217,13 @@ export default function Header() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="auth-input"
               />
-              
+
               <input
                 type="password"
                 placeholder="Mot de passe (6 caractères minimum)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && authMode === 'signin' && handleAuth()}
+                onKeyDown={(e) => e.key === "Enter" && authMode === "signin" && handleAuth()}
                 className="auth-input"
               />
 
@@ -317,31 +237,17 @@ export default function Header() {
                 />
               )}
 
-              <button 
-                className="btn-primary-full" 
-                onClick={handleAuth}
-                disabled={signupLoading}
-              >
-                {signupLoading 
-                  ? "Inscription..." 
-                  : authMode === "signin" 
-                    ? "Se connecter" 
-                    : "S'inscrire"}
+              <button className="btn-primary-full" onClick={handleAuth} disabled={signupLoading}>
+                {signupLoading
+                  ? "Inscription..."
+                  : authMode === "signin"
+                  ? "Se connecter"
+                  : "S'inscrire"}
               </button>
 
-              <button 
-                className="btn-link"
-                onClick={() => {
-                  setAuthMode(authMode === "signin" ? "signup" : "signin");
-                  setAuthError("");
-                  setEmail("");
-                  setPassword("");
-                  setConfirmPassword("");
-                  setDisplayName("");
-                }}
-              >
-                {authMode === "signin" 
-                  ? "Pas encore de compte ? S'inscrire" 
+              <button className="btn-link" onClick={resetAuthForm}>
+                {authMode === "signin"
+                  ? "Pas encore de compte ? S'inscrire"
                   : "Déjà un compte ? Se connecter"}
               </button>
             </div>

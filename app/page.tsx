@@ -1,36 +1,16 @@
 // app/page.tsx
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import CandidatCardModal from "./components/CandidatCardModal";
+import SearchBar from "./components/SearchBar";
 import { useSupabaseAuth } from "./hooks/useSupabaseAuth";
-import { useClickOutside } from "./hooks/useClickOutside";
-import { useSearchCandidats } from "./hooks/useSearchCandidats";
-
-interface CandidatRecherche {
-  id: string;
-  nom: string;
-  ddn: string;
-  description: string;
-  photo: string;
-  wikidata_id: string;
-}
+import { CandidatRecherche } from "@/types";
 
 export default function Home() {
   const { user } = useSupabaseAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCandidat, setSelectedCandidat] = useState<CandidatRecherche | null>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  const { suggestions, loading, showSuggestions, setShowSuggestions } = useSearchCandidats(searchQuery);
-  
-  useClickOutside(searchRef, () => setShowSuggestions(false));
-
-  const handleSelectCandidat = (candidat: CandidatRecherche) => {
-    setSelectedCandidat(candidat);
-    setShowSuggestions(false);
-    setSearchQuery("");
-  };
 
   return (
     <section style={{ maxWidth: "900px", margin: "0 auto", padding: "20px" }}>
@@ -55,128 +35,17 @@ export default function Home() {
       </div>
 
       {/* Barre de recherche */}
-      <div
-        ref={searchRef}
-        style={{
-          position: "relative",
-          marginBottom: "40px",
-        }}
-      >
+      <div style={{ marginBottom: "40px" }}>
         <h2 style={{ marginBottom: "20px" }}>Découvrir des candidats</h2>
-
-        <div style={{ position: "relative" }}>
-          <input
-            type="text"
-            placeholder="Rechercher une personnalité vivante..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => {
-              if (suggestions.length > 0) setShowSuggestions(true);
-            }}
-            style={{
-              width: "100%",
-              padding: "15px 20px",
-              fontSize: "1.1rem",
-              border: "2px solid var(--text)",
-              borderRadius: "12px",
-              background: "rgba(78, 57, 41, 0.2)",
-              color: "var(--text)",
-              fontFamily: "Quicksand, sans-serif",
-              outline: "none",
-              transition: "all 0.2s ease",
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && suggestions.length > 0) {
-                handleSelectCandidat(suggestions[0]);
-              }
-            }}
-          />
-
-          {loading && (
-            <div
-              style={{
-                position: "absolute",
-                right: "15px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "var(--c2)",
-              }}
-            >
-              Recherche...
-            </div>
-          )}
-        </div>
-
-        {/* Suggestions */}
-        {showSuggestions && suggestions.length > 0 && (
-          <div
-            className="suggestions-list"
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              right: 0,
-              marginTop: "8px",
-              background: "var(--card-bg)",
-              border: "2px solid var(--c2)",
-              borderRadius: "12px",
-              overflow: "hidden",
-              boxShadow: "0 8px 20px rgba(0, 0, 0, 0.4)",
-              zIndex: 100,
-            }}
-          >
-            {suggestions.map((candidat) => (
-              <div
-                key={candidat.id}
-                onClick={() => handleSelectCandidat(candidat)}
-                style={{
-                  padding: "15px 20px",
-                  cursor: "pointer",
-                  borderBottom: "1px solid rgba(219, 135, 143, 0.2)",
-                  transition: "background 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(219, 135, 143, 0.2)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                }}
-              >
-                <div style={{ fontWeight: "700", color: "var(--c2)", marginBottom: "4px" }}>
-                  {candidat.nom}
-                </div>
-                {candidat.description && (
-                  <div style={{ fontSize: "0.9rem", color: "rgba(241, 235, 219, 0.7)" }}>
-                    {candidat.description}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {showSuggestions && searchQuery.length >= 2 && suggestions.length === 0 && !loading && (
-          <div
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              right: 0,
-              marginTop: "8px",
-              padding: "15px 20px",
-              background: "var(--card-bg)",
-              border: "2px solid var(--c1)",
-              borderRadius: "12px",
-              color: "rgba(241, 235, 219, 0.7)",
-              textAlign: "center",
-            }}
-          >
-            Aucune personnalité vivante trouvée
-          </div>
-        )}
+        <SearchBar
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          onSelect={setSelectedCandidat}
+          placeholder="Rechercher une personnalité vivante..."
+        />
       </div>
 
-      {/* Informations supplémentaires */}
+      {/* Barème de points */}
       <div
         style={{
           background: "rgba(78, 57, 41, 0.7)",
