@@ -88,7 +88,7 @@ button {
 .header-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 15px 20px;
+  padding: 5px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -111,6 +111,13 @@ button {
 
 .logo-text:hover {
   transform: scale(1.05);
+}
+
+.header-text {
+  font-family: 'Rye', serif;
+  font-size: 1.8rem;
+  color: var(--c2);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .nav-desktop {

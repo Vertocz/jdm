@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -127,7 +128,11 @@ export default function Header() {
         <div className="header-container">
           {/* Logo / Titre */}
           <Link href="/" className="header-logo">
-            <span className="logo-text">JDM</span>
+            <Image
+              src="/logo.png"
+              alt=""
+              width={80}
+              height={80}></Image>
           </Link>
 
           {/* Navigation desktop */}
