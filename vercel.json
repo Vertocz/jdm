@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/keep-alive",
       "schedule": "0 12 * * 1"
+    },
+    {
+      "path": "/api/cron/check-deaths",
+      "schedule": "59 23 * * *"
     }
   ]
 }
