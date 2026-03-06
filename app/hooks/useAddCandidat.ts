@@ -1,5 +1,5 @@
 // hooks/useAddCandidat.ts
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
 interface CandidatRecherche {
@@ -11,147 +11,136 @@ interface CandidatRecherche {
   wikidata_id: string;
 }
 
+interface AddCandidatResult {
+  success: boolean;
+  error?: string;
+}
+
 interface UseAddCandidatResult {
-  addCandidat: (candidat: CandidatRecherche, saison: number) => Promise<{
-    success: boolean;
-    error?: string;
-  }>;
+  addCandidat: (candidat: CandidatRecherche, saison: number) => Promise<AddCandidatResult>;
   loading: boolean;
 }
 
 export function useAddCandidat(userId: string | undefined): UseAddCandidatResult {
   const [loading, setLoading] = useState(false);
+  // useRef pour le guard anti-double-clic : pas de stale closure possible
+  const loadingRef = useRef(false);
 
-  const addCandidat = async (candidat: CandidatRecherche, saison: number) => {
-    console.log("🚀 Début addCandidat", { candidat, saison, userId });
-    
+  const addCandidat = useCallback(async (
+    candidat: CandidatRecherche,
+    saison: number
+  ): Promise<AddCandidatResult> => {
     if (!userId) {
-      console.log("❌ Pas d'userId");
-      return { success: false, error: "Vous devez être connecté" };
+      return { success: false, error: 'Vous devez être connecté' };
     }
 
+    // Guard via ref — immunisé contre les stale closures du useCallback
+    if (loadingRef.current) {
+      return { success: false, error: 'Opération déjà en cours' };
+    }
+
+    loadingRef.current = true;
     setLoading(true);
 
     try {
-      // 1. Vérifier le nombre de paris en cours pour cette saison
-      console.log("📊 Vérification du nombre de paris...");
-      const { data: parisEnCours, error: countError } = await supabase
+      // 1. Compter les paris actifs (mort=false uniquement)
+      const { count: activeCount, error: countError } = await supabase
         .from('paris')
-        .select('id', { count: 'exact' })
+        .select('*', { count: 'exact', head: true })
         .eq('joueur', userId)
         .eq('saison', saison)
         .eq('mort', false);
 
-      console.log("Résultat count:", { parisEnCours, countError });
-
       if (countError) throw countError;
 
-      if (parisEnCours && parisEnCours.length >= 10) {
-        console.log("❌ Déjà 10 paris");
-        setLoading(false);
-        return { 
-          success: false, 
-          error: "Vous avez déjà 10 candidats pour cette saison" 
-        };
+      if (activeCount !== null && activeCount >= 10) {
+        return { success: false, error: 'Vous avez déjà 10 candidats actifs pour cette saison' };
       }
 
-      // 2. Vérifier si le candidat existe déjà dans la table candidats
-      console.log("🔍 Recherche du candidat existant...");
-      const { data: existingCandidat, error: searchError } = await supabase
+      // 2. Upsert du candidat sans écraser les données existantes (ignoreDuplicates: true)
+      //    → Si le candidat existe déjà en base (même wikidata_id), on récupère son id sans le modifier.
+      //      En particulier, on ne remet pas ddd à null si la personne est déjà décédée en base.
+      const { data: upsertedCandidat, error: upsertError } = await supabase
         .from('candidats')
+        .upsert(
+          {
+            nom: candidat.nom,
+            ddn: candidat.ddn || null,
+            ddd: null,
+            description: candidat.description ?? '',
+            photo: candidat.photo ?? '',
+            wikidata_id: candidat.wikidata_id,
+          },
+          {
+            onConflict: 'wikidata_id',
+            ignoreDuplicates: true, // Ne jamais écraser un candidat existant (ddd inclus)
+          }
+        )
         .select('id')
-        .eq('wikidata_id', candidat.wikidata_id)
         .maybeSingle();
 
-      console.log("Résultat recherche:", { existingCandidat, searchError });
+      if (upsertError) throw upsertError;
 
-      if (searchError) throw searchError;
-
+      // Si ignoreDuplicates: true et le candidat existait déjà, upsertedCandidat est null.
+      // On le récupère manuellement.
       let candidatId: number;
 
-      if (existingCandidat) {
-        // Le candidat existe déjà
-        console.log("✅ Candidat existe déjà, id:", existingCandidat.id);
-        candidatId = existingCandidat.id;
-
-        // Vérifier si le joueur a déjà parié sur ce candidat cette saison
-        console.log("🔍 Vérification pari existant...");
-        const { data: existingPari, error: pariCheckError } = await supabase
-          .from('paris')
-          .select('id')
-          .eq('joueur', userId)
-          .eq('candidat_id', candidatId)
-          .eq('saison', saison)
-          .maybeSingle();
-
-        console.log("Résultat pari existant:", { existingPari, pariCheckError });
-
-        if (pariCheckError) throw pariCheckError;
-
-        if (existingPari) {
-          console.log("❌ Pari existe déjà");
-          setLoading(false);
-          return { 
-            success: false, 
-            error: "Vous avez déjà parié sur ce candidat cette saison" 
-          };
-        }
+      if (upsertedCandidat) {
+        candidatId = upsertedCandidat.id;
       } else {
-        // 3. Insérer le nouveau candidat
-        console.log("➕ Insertion nouveau candidat...");
-        const { data: newCandidat, error: insertError } = await supabase
+        const { data: existing, error: fetchError } = await supabase
           .from('candidats')
-          .insert({
-            nom: candidat.nom,
-            ddn: candidat.ddn,
-            ddd: null,
-            description: candidat.description || '',
-            photo: candidat.photo || '',
-            wikidata_id: candidat.wikidata_id,
-          })
           .select('id')
+          .eq('wikidata_id', candidat.wikidata_id)
           .single();
 
-        console.log("Résultat insertion:", { newCandidat, insertError });
-
-        if (insertError) throw insertError;
-        candidatId = newCandidat.id;
+        if (fetchError || !existing) throw fetchError ?? new Error('Candidat introuvable');
+        candidatId = existing.id;
       }
 
-      // 4. Créer le pari
-      console.log("➕ Création du pari...");
+      // 3. Vérifier l'unicité du pari (joueur × candidat × saison)
+      const { count: existingPariCount, error: pariCheckError } = await supabase
+        .from('paris')
+        .select('*', { count: 'exact', head: true })
+        .eq('joueur', userId)
+        .eq('candidat_id', candidatId)
+        .eq('saison', saison);
+
+      if (pariCheckError) throw pariCheckError;
+
+      if (existingPariCount && existingPariCount > 0) {
+        return { success: false, error: 'Vous avez déjà parié sur ce candidat cette saison' };
+      }
+
+      // 4. Insérer le pari
       const { error: pariError } = await supabase
         .from('paris')
         .insert({
           candidat_id: candidatId,
           joueur: userId,
-          saison: saison,
+          saison,
           mort: false,
         });
 
-      console.log("Résultat création pari:", { pariError });
+      if (pariError) {
+        // Violation de contrainte unique = double clic ayant passé la vérification simultanément
+        if (pariError.code === '23505') {
+          return { success: false, error: 'Vous avez déjà parié sur ce candidat cette saison' };
+        }
+        throw pariError;
+      }
 
-      if (pariError) throw pariError;
-
-      console.log("✅ Succès !");
-      setLoading(false);
       return { success: true };
 
-    } catch (error: any) {
-      console.error("Erreur lors de l'ajout du candidat:", error);
-      console.error("Détails de l'erreur:", {
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
-        code: error?.code
-      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Une erreur est survenue';
+      console.error('Erreur addCandidat:', err);
+      return { success: false, error: message };
+    } finally {
+      loadingRef.current = false;
       setLoading(false);
-      return { 
-        success: false, 
-        error: error?.message || "Une erreur est survenue lors de l'ajout" 
-      };
     }
-  };
+  }, [userId]); // userId uniquement — plus de `loading` dans les deps
 
   return { addCandidat, loading };
 }

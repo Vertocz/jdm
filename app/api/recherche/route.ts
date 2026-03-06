@@ -1,7 +1,8 @@
 // app/api/recherche/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 
-const WIKIDATA_URL = "https://www.wikidata.org/w/api.php";
+const WIKIDATA_URL = 'https://www.wikidata.org/w/api.php';
+const FETCH_TIMEOUT_MS = 8000;
 
 interface CandidatWikidata {
   id: string;
@@ -12,103 +13,120 @@ interface CandidatWikidata {
   wikidata_id: string;
 }
 
-export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const query = searchParams.get("q");
+function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(id));
+}
 
-  if (!query || query.trim().length === 0) {
+export async function GET(request: NextRequest) {
+  const query = request.nextUrl.searchParams.get('q')?.trim();
+
+  if (!query || query.length === 0) {
     return NextResponse.json({ candidats: [] });
   }
 
   try {
-    // 1. Recherche d'entités Wikidata
-    const searchResponse = await fetch(
-      `${WIKIDATA_URL}?` +
-        new URLSearchParams({
-          action: "wbsearchentities",
-          language: "fr",
-          uselang: "fr",
-          format: "json",
-          search: query,
-          limit: "10", // On prend 10 pour filtrer ensuite
-        })
+    // 1. Recherche des entités Wikidata correspondant à la query
+    const searchRes = await fetchWithTimeout(
+      `${WIKIDATA_URL}?${new URLSearchParams({
+        action: 'wbsearchentities',
+        language: 'fr',
+        uselang: 'fr',
+        format: 'json',
+        search: query,
+        limit: '10',
+      })}`,
+      FETCH_TIMEOUT_MS
     );
 
-    const searchData = await searchResponse.json();
+    if (!searchRes.ok) throw new Error(`Wikidata search HTTP ${searchRes.status}`);
+    const searchData = await searchRes.json();
 
-    if (!searchData.search || searchData.search.length === 0) {
+    if (!searchData.search?.length) {
       return NextResponse.json({ candidats: [] });
     }
 
-    // 2. Pour chaque résultat, récupérer les claims (date de naissance, décès, photo)
-    const candidatsPromises = searchData.search.map(async (item: any) => {
-      const entityId = item.id;
+    const entityIds: string[] = searchData.search.map((item: { id: string }) => item.id);
 
-      const claimsResponse = await fetch(
-        `${WIKIDATA_URL}?` +
-          new URLSearchParams({
-            action: "wbgetclaims",
-            entity: entityId,
-            props: "value",
-            format: "json",
-          })
-      );
+    // 2. Récupérer les claims de TOUTES les entités en une seule requête (wbgetentities)
+    //    au lieu de N requêtes wbgetclaims parallèles
+    const entitiesRes = await fetchWithTimeout(
+      `${WIKIDATA_URL}?${new URLSearchParams({
+        action: 'wbgetentities',
+        ids: entityIds.join('|'),
+        props: 'claims|labels|descriptions',
+        languages: 'fr|en',
+        format: 'json',
+      })}`,
+      FETCH_TIMEOUT_MS
+    );
 
-      const claimsData = await claimsResponse.json();
-      const claims = claimsData.claims || {};
+    if (!entitiesRes.ok) throw new Error(`Wikidata entities HTTP ${entitiesRes.status}`);
+    const entitiesData = await entitiesRes.json();
+    const entities = entitiesData.entities ?? {};
 
-      // Vérifier que la personne est vivante (P569 = date de naissance, P570 = date de décès)
-      const hasDateNaissance = "P569" in claims;
-      const hasDateDeces = "P570" in claims;
+    const candidats: CandidatWikidata[] = [];
 
-      if (!hasDateNaissance || hasDateDeces) {
-        return null; // Pas vivant ou pas de date de naissance
-      }
+    for (const item of searchData.search) {
+      const entityId: string = item.id;
+      const entity = entities[entityId];
+      if (!entity) continue;
 
-      // Extraire les données
-      let ddn = "";
+      const claims = entity.claims ?? {};
+
+      // Garder uniquement les personnes vivantes (P569 = naissance, P570 = décès)
+      const hasDateNaissance = 'P569' in claims;
+      const hasDateDeces = 'P570' in claims;
+      if (!hasDateNaissance || hasDateDeces) continue;
+
+      // Date de naissance
+      let ddn = '';
       try {
-        const dateStr = claims.P569[0].mainsnak.datavalue.value.time;
-        // Format Wikidata: +1990-05-15T00:00:00Z
+        const dateStr: string = claims.P569[0].mainsnak.datavalue.value.time;
         const match = dateStr.match(/\+(\d{4})-(\d{2})-(\d{2})/);
-        if (match) {
-          ddn = `${match[1]}-${match[2]}-${match[3]}`; // Format YYYY-MM-DD
-        }
-      } catch (e) {
-        console.error("Erreur parsing date:", e);
+        if (match) ddn = `${match[1]}-${match[2]}-${match[3]}`;
+      } catch {
+        // date malformée ou absente — on garde ddn vide
       }
 
-      let photo = "";
+      // Photo (P18)
+      let photo = '';
       try {
-        if (claims.P18 && claims.P18[0]) {
-          photo = claims.P18[0].mainsnak.datavalue.value.replace(/ /g, "_");
+        if (claims.P18?.[0]) {
+          photo = (claims.P18[0].mainsnak.datavalue.value as string).replace(/ /g, '_');
         }
-      } catch (e) {
-        // Pas de photo
+      } catch {
+        // pas de photo
       }
 
-      const candidat: CandidatWikidata = {
-        id: entityId,
-        nom: item.display?.label?.value || item.label,
-        ddn: ddn,
-        description: item.description || "",
-        photo: photo,
-        wikidata_id: entityId,
-      };
+      // Label en français, fallback anglais
+      const nom: string =
+        entity.labels?.fr?.value ||
+        entity.labels?.en?.value ||
+        item.label ||
+        entityId;
 
-      return candidat;
-    });
+      // Description en français, fallback anglais puis celle de la recherche
+      const description: string =
+        entity.descriptions?.fr?.value ||
+        entity.descriptions?.en?.value ||
+        item.description ||
+        '';
 
-    const candidats = (await Promise.all(candidatsPromises))
-      .filter((c) => c !== null)
-      .slice(0, 5); // Limiter à 5 résultats
+      candidats.push({ id: entityId, nom, ddn, description, photo, wikidata_id: entityId });
+
+      if (candidats.length === 5) break; // Limiter à 5 résultats
+    }
 
     return NextResponse.json({ candidats });
-  } catch (error) {
-    console.error("Erreur recherche Wikidata:", error);
+
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    console.error('Erreur recherche Wikidata:', err);
     return NextResponse.json(
-      { error: "Erreur lors de la recherche" },
-      { status: 500 }
+      { error: isTimeout ? 'Délai dépassé' : 'Erreur lors de la recherche' },
+      { status: isTimeout ? 504 : 500 }
     );
   }
 }

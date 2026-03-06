@@ -7,7 +7,6 @@ import CandidatCardModal from "@/app/components/CandidatCardModal";
 import { calculAge, pointsPourAge } from "@/utils/fonctions";
 import { useSearchCandidats } from "@/app/hooks/useSearchCandidats";
 import { useClickOutside } from "@/app/hooks/useClickOutside";
-import { useAddCandidat } from "@/app/hooks/useAddCandidat";
 
 interface CandidatRecherche {
   id: string;
@@ -343,7 +342,7 @@ export default function SalleAttente() {
           onClose={() => setSelectedCandidat(null)}
           user={user}
           saison={selectedYear}
-          parisEnCours={parisForYear.length}
+          parisEnCours={enCours.length}
           existingPariIds={parisForYear.map(p => p.candidats?.wikidata_id).filter(Boolean)}
           onCandidatAdded={handleCandidatAdded}
         />
