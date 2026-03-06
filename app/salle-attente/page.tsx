@@ -40,7 +40,7 @@ export default function SalleAttente() {
 
     if (fetchError) throw fetchError;
 
-    const data_ = (data ?? []) as Pari[];
+    const data_ = (data ?? []) as unknown as Pari[];
     setParis(data_);
 
     const currentYear = new Date().getFullYear();
