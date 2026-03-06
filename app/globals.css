@@ -525,7 +525,7 @@ button {
 }
 
 .stat-poker {
-  border-color: #ffd700;
+  border-color: rgb(255, 215, 0);
   background: linear-gradient(145deg, rgba(255, 215, 0, 0.15), rgba(78, 57, 41, 0.2));
 }
 
