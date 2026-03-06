@@ -23,10 +23,18 @@ export default function Classement() {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data: profiles, error: profError } = await supabase
+        const { data: rawProfiles, error: profError } = await supabase
           .from("profiles")
           .select("user_id, display_name");
         if (profError) throw profError;
+
+        // Dédupliquer par user_id — au cas où la table contient des doublons
+        const seen = new Set<string>();
+        const profiles = (rawProfiles ?? []).filter((p) => {
+          if (seen.has(p.user_id)) return false;
+          seen.add(p.user_id);
+          return true
+        });
 
         const { data: paris, error: parisError } = await supabase
           .from("paris")
@@ -143,7 +151,7 @@ export default function Classement() {
           const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "";
 
           return (
-            <div key={joueur.user_id} className="classement-item">
+            <div key={`${joueur.user_id}-${index}`} className="classement-item">
               <div className="classement-rank">{medal || `#${rank}`}</div>
               <div className="classement-info">
                 <Link
