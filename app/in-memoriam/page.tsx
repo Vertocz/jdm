@@ -5,48 +5,52 @@ import { supabase } from "@/lib/supabaseClient";
 import CandidatCard from "@/app/components/CandidatCard";
 
 export default function InMemoriam() {
-  const [grouped, setGrouped] = useState<any>({});
+  const [grouped, setGrouped] = useState<Record<number, any[]>>({});
   const [years, setYears] = useState<number[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
+  const doLoad = async () => {
+    setError(null);
+    setLoading(true);
+    try {
       const { data: candidats, error } = await supabase
         .from("candidats")
         .select("*")
         .not("ddd", "is", null);
 
-      if (error) {
-        console.error(error);
-        setLoading(false);
-        return;
-      }
+      if (error) throw error;
 
-      const sorted = [...candidats].sort(
-        (a, b) =>
-          new Date(b.ddd).getFullYear() - new Date(a.ddd).getFullYear()
-      );
-
-      const g: any = {};
-      sorted.forEach((c) => {
+      const g: Record<number, any[]> = {};
+      (candidats ?? []).forEach((c) => {
         const year = new Date(c.ddd).getFullYear();
         if (!g[year]) g[year] = [];
         g[year].push(c);
       });
 
       const listYears = Object.keys(g).map(Number).sort((a, b) => b - a);
-
       setGrouped(g);
       setYears(listYears);
       setSelectedYear(listYears[0] ?? null);
+    } catch (err: unknown) {
+      console.error("[in-memoriam]", err);
+      setError("Impossible de charger les données. Vérifie ta connexion et réessaie.");
+    } finally {
       setLoading(false);
-    };
+    }
+  };
 
-    load();
-  }, []);
+  useEffect(() => { doLoad(); }, []);
 
   if (loading) return <p>Chargement...</p>;
+
+  if (error) return (
+    <div style={{ maxWidth: 600, margin: "60px auto", textAlign: "center" }}>
+      <p style={{ color: "var(--c2)", fontSize: "1.1rem", marginBottom: 20 }}>{error}</p>
+      <button className="btn-primary" onClick={doLoad}>Réessayer</button>
+    </div>
+  );
 
   if (!selectedYear) return <p>Aucun décès enregistré.</p>;
 
@@ -61,7 +65,7 @@ export default function InMemoriam() {
           <button
             key={y}
             onClick={() => setSelectedYear(y)}
-            className={`year-button ${y === selectedYear ? 'active' : ''}`}
+            className={`year-button ${y === selectedYear ? "active" : ""}`}
           >
             {y}
           </button>

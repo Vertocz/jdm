@@ -1,7 +1,7 @@
 // app/joueur/[id]/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import CandidatCard from "@/app/components/CandidatCard";
@@ -16,151 +16,117 @@ export default function JoueurPage() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [years, setYears] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const init = async () => {
-      // Charger le profil
+  const doLoad = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
       const { data: prof, error: profError } = await supabase
         .from("profiles")
         .select("display_name")
         .eq("user_id", userId)
         .maybeSingle();
 
-      if (profError || !prof) {
-        console.error("Joueur introuvable");
-        setLoading(false);
-        return;
-      }
+      if (profError) throw profError;
+      if (!prof) { setLoading(false); return; }
 
       setProfile(prof);
 
-      // Charger les paris
-      const { data, error } = await supabase
+      const { data, error: parisError } = await supabase
         .from("paris")
         .select(`
-          id,
-          mort,
-          saison,
-          candidat_id,
-          candidats (
-            id,
-            nom,
-            ddn,
-            ddd,
-            description,
-            photo
-          )
+          id, mort, saison, candidat_id,
+          candidats ( id, nom, ddn, ddd, description, photo )
         `)
         .eq("joueur", userId);
 
-      if (error) {
-        console.error(error);
-        setLoading(false);
-        return;
-      }
+      if (parisError) throw parisError;
 
-      setParis(data || []);
+      const data_ = data ?? [];
+      setParis(data_);
 
-      const uniqueYears = [...new Set(data.map((p: any) => p.saison))].sort(
-        (a, b) => b - a
-      );
-      
       const currentYear = new Date().getFullYear();
-      
-      // Toujours ajouter l'année en cours dans la liste si elle n'y est pas
-      if (!uniqueYears.includes(currentYear)) {
-        uniqueYears.unshift(currentYear); // Ajoute l'année courante au début
-      }
-
+      const uniqueYears = [...new Set(data_.map((p: any) => p.saison) as number[])].sort((a, b) => b - a);
+      if (!uniqueYears.includes(currentYear)) uniqueYears.unshift(currentYear);
       setYears(uniqueYears);
-      setSelectedYear(currentYear); // Toujours sélectionner l'année en cours par défaut
+      setSelectedYear(currentYear);
+    } catch (err: unknown) {
+      console.error("[joueur]", err);
+      setError("Impossible de charger ce profil. Vérifie ta connexion et réessaie.");
+    } finally {
       setLoading(false);
-    };
-
-    init();
+    }
   }, [userId]);
 
+  useEffect(() => { doLoad(); }, [doLoad]);
+
   if (loading) return <p>Chargement...</p>;
+
+  if (error) return (
+    <div style={{ maxWidth: 600, margin: "60px auto", textAlign: "center" }}>
+      <p style={{ color: "var(--c2)", fontSize: "1.1rem", marginBottom: 20 }}>{error}</p>
+      <button className="btn-primary" onClick={doLoad}>Réessayer</button>
+    </div>
+  );
 
   if (!profile) return <p>Joueur introuvable.</p>;
 
   const parisForYear = paris.filter((p) => p.saison === selectedYear);
 
   const enCours = parisForYear.filter((p) => {
-    const ddd = p.candidats.ddd;
+    const ddd = p.candidats?.ddd;
     if (!ddd) return true;
-    const anneeDDD = new Date(ddd).getFullYear();
-    return anneeDDD > selectedYear;
+    return new Date(ddd).getFullYear() > selectedYear;
   });
 
   const gagnants = parisForYear.filter((p) => {
-    const ddd = p.candidats.ddd;
+    const ddd = p.candidats?.ddd;
     if (!ddd) return false;
-    const anneeDDD = new Date(ddd).getFullYear();
-    return anneeDDD === selectedYear;
+    return new Date(ddd).getFullYear() === selectedYear;
   });
 
-  // Calculer les points totaux de l'année
   const totalPoints = gagnants.reduce((sum, p: any) => {
-    const age = calculAge(p.candidats.ddn, p.candidats.ddd);
-    return sum + pointsPourAge(age);
+    return sum + pointsPourAge(calculAge(p.candidats.ddn, p.candidats.ddd));
   }, 0);
 
-  // Trouver le coup de poker (candidat le plus jeune en cours)
   const coupDePoker = enCours.length > 0
     ? enCours.reduce((youngest: any, p: any) => {
-        const ageYoungest = calculAge(youngest.candidats.ddn, youngest.candidats.ddd) ?? 999;
-        const ageCurrent = calculAge(p.candidats.ddn, p.candidats.ddd) ?? 999;
-        return ageCurrent < ageYoungest ? p : youngest;
+        const a1 = calculAge(youngest.candidats.ddn, youngest.candidats.ddd) ?? 999;
+        const a2 = calculAge(p.candidats.ddn, p.candidats.ddd) ?? 999;
+        return a2 < a1 ? p : youngest;
       })
     : null;
 
-  // Calculer la moyenne d'âge des candidats en cours
   const moyenneAge = enCours.length > 0
-    ? Math.round(
-        enCours.reduce((sum: number, p: any) => {
-          const age = calculAge(p.candidats.ddn, p.candidats.ddd);
-          return sum + (age || 0);
-        }, 0) / enCours.length
-      )
+    ? Math.round(enCours.reduce((sum: number, p: any) => sum + (calculAge(p.candidats.ddn, p.candidats.ddd) || 0), 0) / enCours.length)
     : 0;
 
   return (
     <div>
       <h1>Salle d'attente de {profile.display_name}</h1>
 
-      {/* Stats de l'année */}
       <div className="stats-container">
         <div className="stat-box">
           <div className="stat-value">{totalPoints}</div>
           <div className="stat-label">Point{totalPoints > 1 ? "s" : ""} en {selectedYear}</div>
         </div>
-
         <div className="stat-box">
           <div className="stat-value">{moyenneAge}</div>
           <div className="stat-label">Moyenne d'âge</div>
         </div>
-
         {coupDePoker && (
           <div className="stat-box stat-poker">
             <div className="stat-label">Coup de poker</div>
-            <div className="stat-value" style={{ fontSize: "1.2rem" }}>
-              {coupDePoker.candidats.nom}
-            </div>
-            <div className="stat-sublabel">
-              {calculAge(coupDePoker.candidats.ddn, coupDePoker.candidats.ddd)} ans
-            </div>
+            <div className="stat-value" style={{ fontSize: "1.2rem" }}>{coupDePoker.candidats.nom}</div>
+            <div className="stat-sublabel">{calculAge(coupDePoker.candidats.ddn, coupDePoker.candidats.ddd)} ans</div>
           </div>
         )}
       </div>
 
       <div className="year-buttons">
         {years.map((y) => (
-          <button
-            key={y}
-            onClick={() => setSelectedYear(y)}
-            className={`year-button ${y === selectedYear ? 'active' : ''}`}
-          >
+          <button key={y} onClick={() => setSelectedYear(y)} className={`year-button ${y === selectedYear ? "active" : ""}`}>
             {y}
           </button>
         ))}
@@ -169,17 +135,13 @@ export default function JoueurPage() {
       <h2>Paris en cours ({enCours.length}/10)</h2>
       {enCours.length === 0 && <p>Aucun pari en cours pour {selectedYear}.</p>}
       <div className="cards-grid">
-        {enCours.map((p) => (
-          <CandidatCard key={p.id} candidat={p.candidats} />
-        ))}
+        {enCours.map((p) => <CandidatCard key={p.id} candidat={p.candidats} />)}
       </div>
 
       <h2>Paris gagnants</h2>
       {gagnants.length === 0 && <p>Aucun pari gagnant en {selectedYear}.</p>}
       <div className="cards-grid">
-        {gagnants.map((p) => (
-          <CandidatCard key={p.id} candidat={p.candidats} />
-        ))}
+        {gagnants.map((p) => <CandidatCard key={p.id} candidat={p.candidats} />)}
       </div>
     </div>
   );
