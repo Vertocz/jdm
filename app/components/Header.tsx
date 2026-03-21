@@ -1,259 +1,236 @@
 // app/components/Header.tsx
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { User } from "@supabase/supabase-js";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseAuth } from "@/app/hooks/useSupabaseAuth";
-import { useSignup } from "../hooks/useSignUp";
-import { Profile } from "@/types";
+import { useSignup } from "@/app/hooks/useSignUp";
+
+/* ── Icône roue crantée SVG inline ── */
+function GearIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
 
 export default function Header() {
-  const router = useRouter();
+  const pathname = usePathname();
+  const router   = useRouter();
   const { user } = useSupabaseAuth();
   const { signup, loading: signupLoading } = useSignup();
 
-  const [profile, setProfile] = useState<Pick<Profile, "display_name"> | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [authError, setAuthError] = useState("");
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [burgerOpen,  setBurgerOpen]  = useState(false);
+  const [authOpen,    setAuthOpen]    = useState(false);
+  const [authMode,    setAuthMode]    = useState<"signin" | "signup">("signin");
+  const [authEmail,   setAuthEmail]   = useState("");
+  const [authPwd,     setAuthPwd]     = useState("");
+  const [authConfirm, setAuthConfirm] = useState("");
+  const [authName,    setAuthName]    = useState("");
+  const [authError,   setAuthError]   = useState("");
 
-  // Charger le profil quand l'utilisateur change
-  const fetchProfile = async (userId: string) => {
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("display_name")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (!prof) {
-      // Attendre que le trigger Supabase crée le profil
-      await new Promise((r) => setTimeout(r, 1000));
-      const { data: retry } = await supabase
-        .from("profiles")
-        .select("display_name")
-        .eq("user_id", userId)
-        .maybeSingle();
-      setProfile(retry ?? null);
-      return;
-    }
-    setProfile(prof);
+  const resetAuth = (mode: "signin" | "signup") => {
+    setAuthMode(mode); setAuthError("");
+    setAuthEmail(""); setAuthPwd(""); setAuthConfirm(""); setAuthName("");
   };
 
   const handleAuth = async () => {
     setAuthError("");
-
     if (authMode === "signin") {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPwd });
       if (error) { setAuthError("Email ou mot de passe incorrect"); return; }
-
-      setShowAuthModal(false);
-      setEmail("");
-      setPassword("");
+      setAuthOpen(false);
       router.push("/salle-attente");
     } else {
-      const result = await signup({ email, password, confirmPassword, displayName });
-      if (!result.success) { setAuthError(result.error ?? "Erreur lors de l'inscription"); return; }
-
-      setShowAuthModal(false);
-      setEmail("");
-      setPassword("");
-      setConfirmPassword("");
-      setDisplayName("");
+      const result = await signup({ email: authEmail, password: authPwd, confirmPassword: authConfirm, displayName: authName });
+      if (!result.success) { setAuthError(result.error ?? "Erreur"); return; }
+      setAuthOpen(false);
       router.push("/salle-attente");
     }
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
-    router.push("/");
-  };
-
-  const resetAuthForm = () => {
-    setAuthMode(authMode === "signin" ? "signup" : "signin");
-    setAuthError("");
-    setEmail("");
-    setPassword("");
-    setConfirmPassword("");
-    setDisplayName("");
-  };
+  const navLink = (href: string, label: string) => (
+    <Link key={href} href={href}
+      className={`h-nav-link${pathname === href ? " active" : ""}`}>
+      {label}
+    </Link>
+  );
 
   return (
     <>
-      <header className="header-modern">
-        <div className="header-container">
-          {/* Logo */}
-          <Link href="/" className="header-logo">
-            <Image src="/logo.png" alt="" width={80} height={80} />
-          </Link>
+      {/* ── NAV ── */}
+      <nav className="h-nav scrolled" style={{ position: "sticky" }}>
 
-          {/* Navigation desktop */}
-          <nav className="nav-desktop">
-            {user && <Link href="/salle-attente" className="nav-link">Ma salle</Link>}
-            <Link href="/classement" className="nav-link">Classement</Link>
-            <Link href="/in-memoriam" className="nav-link">In Memoriam</Link>
-            <Link href="/favoris" className="nav-link">Favoris</Link>
-          </nav>
+        {/* Logo image */}
+        <Link href="/" style={{ display: "flex", alignItems: "center", opacity: 1, animation: "none", flexShrink: 0, textDecoration: "none", color: "inherit" }}>
+          <Image
+            src="/logo.png"
+            alt="Le Jeu de la Mort"
+            width={72}
+            height={72}
+            style={{ objectFit: "contain" }}
+            priority
+          />
+          <span className="h-nav-logo">Le Jeu <em>de la Mort</em></span>
+        </Link>
 
-          {/* Actions utilisateur */}
-          <div className="header-actions">
-            {user ? (
-              <>
-                <Link href="/gestion" className="nav-link" style={{ whiteSpace: "nowrap" }}>
-                  Gérer mon compte
-                </Link>
-                <button className="btn-secondary" onClick={signOut}>
-                  Déconnexion
-                </button>
-              </>
-            ) : (
-              <button className="btn-primary" onClick={() => setShowAuthModal(true)}>
-                Connexion/Inscription
-              </button>
-            )}
-          </div>
-
-          {/* Bouton hamburger mobile */}
-          <button
-            className="hamburger-btn"
-            onClick={() => setShowMobileMenu(!showMobileMenu)}
-            aria-label="Menu"
-            aria-expanded={showMobileMenu}
-          >
-            <span className={`hamburger-line ${showMobileMenu ? "open" : ""}`} />
-            <span className={`hamburger-line ${showMobileMenu ? "open" : ""}`} />
-            <span className={`hamburger-line ${showMobileMenu ? "open" : ""}`} />
-          </button>
+        {/* Liens desktop */}
+        <div className="h-nav-links" style={{ opacity: 1, animation: "none" }}>
+          {navLink("/classement",  "Classement")}
+          {navLink("/in-memoriam", "In Memoriam")}
+          {navLink("/favoris",     "Favoris")}
+          {user && navLink("/salle-attente", "Ma salle")}
         </div>
 
-        {/* Menu mobile */}
-        {showMobileMenu && (
-          <div className="mobile-menu">
-            {user && (
-              <Link href="/salle-attente" className="mobile-link" onClick={() => setShowMobileMenu(false)}>
-                Ma salle
-              </Link>
-            )}
-            <Link href="/classement" className="mobile-link" onClick={() => setShowMobileMenu(false)}>Classement</Link>
-            <Link href="/in-memoriam" className="mobile-link" onClick={() => setShowMobileMenu(false)}>In Memoriam</Link>
-            <Link href="/favoris" className="mobile-link" onClick={() => setShowMobileMenu(false)}>Favoris</Link>
-            {user && (
-              <Link href="/gestion" className="mobile-link" onClick={() => setShowMobileMenu(false)}>
-                Gérer mon compte
-              </Link>
-            )}
-            <button
-              className="mobile-link"
-              onClick={() => {
-                user ? signOut() : setShowAuthModal(true);
-                setShowMobileMenu(false);
-              }}
-            >
-              {user ? "Déconnexion" : "Connexion/Inscription"}
-            </button>
-          </div>
-        )}
-      </header>
-
-      {/* Modal d'authentification */}
-      {showAuthModal && (
-        <div
-          className="modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={authMode === "signin" ? "Connexion" : "Inscription"}
-          onClick={() => setShowAuthModal(false)}
-        >
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowAuthModal(false)} aria-label="Fermer">✕</button>
-
-            <h2 className="modal-title">
-              {authMode === "signin" ? "Connexion" : "Inscription"}
-            </h2>
-
-            {authError && (
-              <div
+        {/* Actions desktop */}
+        <div className="h-nav-actions" style={{ opacity: 1, animation: "none", display: "flex", alignItems: "center", gap: 8 }}>
+          {user ? (
+            <>
+              {/* Roue crantée → gestion */}
+              <Link
+                href="/gestion"
+                title="Paramètres du compte"
                 style={{
-                  background: "rgba(248, 113, 113, 0.2)",
-                  border: "2px solid #f87171",
-                  borderRadius: "10px",
-                  padding: "12px",
-                  marginBottom: "20px",
-                  color: "#fca5a5",
-                  fontSize: "0.95rem",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 34, height: 34,
+                  borderRadius: "50%",
+                  border: `1px solid ${pathname === "/gestion" ? "rgba(219,135,143,.5)" : "rgba(241,235,219,.12)"}`,
+                  color: pathname === "/gestion" ? "var(--rose)" : "rgba(241,235,219,.4)",
+                  textDecoration: "none",
+                  transition: "all .2s ease",
+                  flexShrink: 0,
+                }}
+                onMouseOver={e => {
+                  const el = e.currentTarget;
+                  el.style.borderColor = "rgba(219,135,143,.5)";
+                  el.style.color = "var(--rose)";
+                  el.style.background = "rgba(219,135,143,.07)";
+                }}
+                onMouseOut={e => {
+                  const el = e.currentTarget;
+                  el.style.borderColor = pathname === "/gestion" ? "rgba(219,135,143,.5)" : "rgba(241,235,219,.12)";
+                  el.style.color = pathname === "/gestion" ? "var(--rose)" : "rgba(241,235,219,.4)";
+                  el.style.background = "transparent";
                 }}
               >
-                {authError}
-              </div>
-            )}
+                <GearIcon />
+              </Link>
 
-            <div className="auth-form-modal">
-              {authMode === "signup" && (
-                <input
-                  type="text"
-                  placeholder="Pseudo (3 caractères minimum)"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="auth-input"
-                />
-              )}
-
-              <input
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="auth-input"
-              />
-
-              <input
-                type="password"
-                placeholder="Mot de passe (6 caractères minimum)"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && authMode === "signin" && handleAuth()}
-                className="auth-input"
-              />
-
-              {authMode === "signup" && (
-                <input
-                  type="password"
-                  placeholder="Confirmer le mot de passe"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="auth-input"
-                />
-              )}
-
-              <button className="btn-primary-full" onClick={handleAuth} disabled={signupLoading}>
-                {signupLoading
-                  ? "Inscription..."
-                  : authMode === "signin"
-                  ? "Se connecter"
-                  : "S'inscrire"}
+              {/* Déconnexion */}
+              <button
+                className="h-nav-btn"
+                onClick={() => { supabase.auth.signOut(); router.push("/"); }}
+              >
+                Déconnexion
               </button>
-
-              <button className="btn-link" onClick={resetAuthForm}>
-                {authMode === "signin"
-                  ? "Pas encore de compte ? S'inscrire"
-                  : "Déjà un compte ? Se connecter"}
-              </button>
-            </div>
-          </div>
+            </>
+          ) : (
+            <button className="h-nav-btn" onClick={() => setAuthOpen(true)}>Connexion</button>
+          )}
         </div>
-      )}
+
+        {/* Hamburger mobile */}
+        <button
+          className={`h-burger${burgerOpen ? " open" : ""}`}
+          style={{ opacity: 1, animation: "none" }}
+          onClick={() => setBurgerOpen(v => !v)}
+          aria-label="Menu"
+        >
+          <span /><span /><span />
+        </button>
+      </nav>
+
+      {/* ── MENU MOBILE ── */}
+      <div className={`h-mobile-menu${burgerOpen ? " open" : ""}`} style={{ top: 64 }}>
+        {[
+          { href: "/",             label: "Accueil" },
+          { href: "/classement",   label: "Classement" },
+          { href: "/in-memoriam",  label: "In Memoriam" },
+          { href: "/favoris",      label: "Favoris" },
+          ...(user ? [
+            { href: "/salle-attente", label: "Ma salle" },
+            { href: "/gestion",       label: "Paramètres" },
+          ] : []),
+        ].map(({ href, label }) => (
+          <Link key={href} href={href} onClick={() => setBurgerOpen(false)}
+            className={`h-mobile-link${pathname === href ? " active" : ""}`}>
+            {label}
+          </Link>
+        ))}
+        <div className="h-mobile-sep" />
+        {user ? (
+          <button className="h-mobile-login"
+            onClick={() => { setBurgerOpen(false); supabase.auth.signOut(); router.push("/"); }}>
+            Déconnexion
+          </button>
+        ) : (
+          <button className="h-mobile-login"
+            onClick={() => { setBurgerOpen(false); setAuthOpen(true); }}>
+            Connexion / Inscription
+          </button>
+        )}
+      </div>
+
+      {/* ── AUTH DRAWER ── */}
+      <div className={`h-auth-overlay${authOpen ? " open" : ""}`} onClick={() => setAuthOpen(false)} />
+      <aside className={`h-auth-drawer${authOpen ? " open" : ""}`}>
+        <button className="h-auth-close" onClick={() => setAuthOpen(false)}>✕</button>
+        <div className="h-auth-inner">
+          <div className="h-auth-heading">Bon<em>jour.</em></div>
+          <p className="h-auth-sub">Connecte-toi pour gérer ta sélection</p>
+
+          <div className="h-auth-tabs">
+            {(["signin", "signup"] as const).map(m => (
+              <button key={m} className={`h-auth-tab${authMode === m ? " active" : ""}`}
+                onClick={() => resetAuth(m)}>
+                {m === "signin" ? "Connexion" : "Inscription"}
+              </button>
+            ))}
+          </div>
+
+          {authError && <div className="h-auth-error">{authError}</div>}
+
+          {authMode === "signup" && (
+            <div className="h-auth-field">
+              <label className="h-auth-label">Pseudo</label>
+              <input className="h-auth-input" type="text" placeholder="3 caractères minimum"
+                value={authName} onChange={e => setAuthName(e.target.value)} />
+            </div>
+          )}
+          <div className="h-auth-field">
+            <label className="h-auth-label">Email</label>
+            <input className="h-auth-input" type="email" placeholder="ton@email.fr"
+              value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+          </div>
+          <div className="h-auth-field">
+            <label className="h-auth-label">Mot de passe</label>
+            <input className="h-auth-input" type="password" placeholder="6 caractères minimum"
+              value={authPwd} onChange={e => setAuthPwd(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && authMode === "signin") handleAuth(); }} />
+          </div>
+          {authMode === "signup" && (
+            <div className="h-auth-field">
+              <label className="h-auth-label">Confirmer</label>
+              <input className="h-auth-input" type="password" placeholder="••••••••"
+                value={authConfirm} onChange={e => setAuthConfirm(e.target.value)} />
+            </div>
+          )}
+
+          <button className="h-auth-submit" onClick={handleAuth} disabled={signupLoading}>
+            {signupLoading ? "Chargement…" : authMode === "signin" ? "Se connecter" : "Créer mon compte"}
+          </button>
+
+          <p className="h-auth-footer">
+            En jouant, tu acceptes que ce jeu est de mauvais goût et que c&apos;est exactement pour ça qu&apos;il existe.
+          </p>
+        </div>
+      </aside>
     </>
   );
 }

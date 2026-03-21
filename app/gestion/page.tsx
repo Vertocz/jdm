@@ -1,3 +1,4 @@
+// app/gestion/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,289 +7,334 @@ import { useRouter } from "next/navigation";
 
 export default function GestionPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-
-  // Données du profil
+  const [user,        setUser]        = useState<any>(null);
+  const [loading,     setLoading]     = useState(true);
+  const [saving,      setSaving]      = useState(false);
+  const [message,     setMessage]     = useState<{ text: string; ok: boolean } | null>(null);
   const [displayName, setDisplayName] = useState("");
-  const [alertMesCandidats, setAlertMesCandidats] = useState(true);
-  const [alertAutresCandidats, setAlertAutresCandidats] = useState(false);
-
-  // Mot de passe
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [alertMes,    setAlertMes]    = useState(true);
+  const [alertAutres, setAlertAutres] = useState(false);
+  const [newPwd,      setNewPwd]      = useState("");
+  const [confirmPwd,  setConfirmPwd]  = useState("");
 
   useEffect(() => {
-    const init = async () => {
+    (async () => {
       const { data } = await supabase.auth.getUser();
       const u = data?.user;
-      
-      if (!u) {
-        router.push("/");
-        return;
-      }
-
+      if (!u) { router.push("/"); return; }
       setUser(u);
-
-      // Charger le profil
-      const { data: profile } = await supabase
+      const { data: prof } = await supabase
         .from("profiles")
         .select("display_name, alert_mes_candidats, alert_autres_candidats")
         .eq("user_id", u.id)
         .maybeSingle();
-
-      if (profile) {
-        setDisplayName(profile.display_name || "");
-        setAlertMesCandidats(profile.alert_mes_candidats ?? true);
-        setAlertAutresCandidats(profile.alert_autres_candidats ?? false);
+      if (prof) {
+        setDisplayName(prof.display_name || "");
+        setAlertMes(prof.alert_mes_candidats ?? true);
+        setAlertAutres(prof.alert_autres_candidats ?? false);
       }
-
       setLoading(false);
-    };
-
-    init();
+    })();
   }, [router]);
 
   const handleSave = async () => {
     if (!user) return;
-
-    setSaving(true);
-    setMessage("");
-
+    setSaving(true); setMessage(null);
     try {
-      // 1. Mettre à jour le profil
-      const { error: profileError } = await supabase
+      const { error: pe } = await supabase
         .from("profiles")
-        .update({
-          display_name: displayName,
-          alert_mes_candidats: alertMesCandidats,
-          alert_autres_candidats: alertAutresCandidats,
-        })
+        .update({ display_name: displayName, alert_mes_candidats: alertMes, alert_autres_candidats: alertAutres })
         .eq("user_id", user.id);
+      if (pe) throw pe;
 
-      if (profileError) throw profileError;
-
-      // 2. Mettre à jour le mot de passe si renseigné
-      if (newPassword) {
-        if (newPassword !== confirmPassword) {
-          setMessage("❌ Les mots de passe ne correspondent pas");
-          setSaving(false);
-          return;
+      if (newPwd) {
+        if (newPwd !== confirmPwd) {
+          setMessage({ text: "Les mots de passe ne correspondent pas.", ok: false });
+          setSaving(false); return;
         }
-
-        if (newPassword.length < 6) {
-          setMessage("❌ Le mot de passe doit contenir au moins 6 caractères");
-          setSaving(false);
-          return;
-        }
-
-        const { error: passwordError } = await supabase.auth.updateUser({
-          password: newPassword,
-        });
-
-        if (passwordError) throw passwordError;
-
-        setNewPassword("");
-        setConfirmPassword("");
+        const { error: we } = await supabase.auth.updateUser({ password: newPwd });
+        if (we) throw we;
+        setNewPwd(""); setConfirmPwd("");
       }
-
-      setMessage("✅ Modifications enregistrées avec succès !");
-      
-      // Recharger la page après 1.5s
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-
-    } catch (error: any) {
-      console.error("Erreur lors de la sauvegarde:", error);
-      setMessage("❌ Erreur lors de l'enregistrement");
+      setMessage({ text: "Modifications enregistrées.", ok: true });
+    } catch (err: any) {
+      setMessage({ text: err.message ?? "Une erreur est survenue.", ok: false });
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   };
 
-  if (loading) return <p>Chargement...</p>;
-
-  if (!user) return <p>Vous devez être connecté.</p>;
+  if (loading) return <div className="page-loading">Chargement…</div>;
 
   return (
-    <div style={{ maxWidth: "700px", margin: "0 auto", padding: "20px" }}>
-      <h1>Gérer mon compte</h1>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", paddingBottom: 80 }}>
 
-      <div
-        style={{
-          background: "linear-gradient(145deg, var(--card-bg) 0%, #1f3240 100%)",
-          border: "3px solid var(--c2)",
-          borderRadius: "20px",
-          padding: "30px",
-          marginTop: "30px",
-        }}
-      >
+      {/* ── EN-TÊTE ── */}
+      <div style={{ padding: "48px 0 40px", textAlign: "center" }}>
+        <h1 style={{
+          fontFamily: "'Outfit', sans-serif",
+          fontSize: "clamp(2rem,5vw,3.2rem)",
+          fontWeight: 900, lineHeight: 1,
+          letterSpacing: "-1px", color: "var(--cream)",
+          marginBottom: 6,
+        }}>
+          Mon compte
+        </h1>
+        {user?.email && (
+          <p style={{
+            fontFamily: "'Space Mono', monospace",
+            fontSize: ".65rem", color: "rgba(241,235,219,.25)",
+            letterSpacing: "1px",
+          }}>
+            {user.email}
+          </p>
+        )}
+      </div>
+
+      {/* ── CONTENU ── */}
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "0 24px" }}>
+
         {/* Pseudo */}
-        <div style={{ marginBottom: "25px" }}>
-          <label
-            htmlFor="displayName"
-            style={{
-              display: "block",
-              color: "var(--c2)",
-              fontWeight: "700",
-              marginBottom: "8px",
-              fontSize: "1.1rem",
-            }}
-          >
-            Pseudo
-          </label>
-          <input
-            id="displayName"
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Votre pseudo"
-            style={{
-              width: "100%",
-              padding: "12px 16px",
-              border: "2px solid var(--c1)",
-              borderRadius: "10px",
-              background: "rgba(241, 235, 219, 0.05)",
-              color: "var(--text)",
-              fontFamily: "Quicksand, sans-serif",
-              fontSize: "1rem",
-            }}
+        <GestionSection label="Identité">
+          <GestionField label="Nom affiché" hint="Visible par les autres joueurs dans le classement">
+            <input
+              className="gestion-input"
+              type="text"
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              placeholder="Ton pseudo"
+            />
+          </GestionField>
+        </GestionSection>
+
+        {/* Notifications */}
+        <GestionSection label="Notifications par email">
+          <Toggle
+            label="Quand un de mes candidats décède"
+            sub="Tu reçois un email dès qu'un de tes paris se concrétise"
+            checked={alertMes}
+            onChange={setAlertMes}
           />
-        </div>
-
-        {/* Alertes */}
-        <div style={{ marginBottom: "25px" }}>
-          <h3 style={{ color: "var(--c2)", marginBottom: "15px" }}>
-            Notifications email
-          </h3>
-
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              marginBottom: "12px",
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={alertMesCandidats}
-              onChange={(e) => setAlertMesCandidats(e.target.checked)}
-              style={{
-                width: "20px",
-                height: "20px",
-                cursor: "pointer",
-              }}
-            />
-            <span style={{ color: "var(--text)" }}>
-              M'alerter quand un de mes candidats décède
-            </span>
-          </label>
-
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={alertAutresCandidats}
-              onChange={(e) => setAlertAutresCandidats(e.target.checked)}
-              style={{
-                width: "20px",
-                height: "20px",
-                cursor: "pointer",
-              }}
-            />
-            <span style={{ color: "var(--text)" }}>
-              M'alerter quand un candidat d'un autre joueur décède
-            </span>
-          </label>
-        </div>
+          <Toggle
+            label="Quand un candidat d'un autre décède"
+            sub="Reste informé même si ce n'est pas ton pari"
+            checked={alertAutres}
+            onChange={setAlertAutres}
+          />
+        </GestionSection>
 
         {/* Mot de passe */}
-        <div style={{ marginBottom: "25px" }}>
-          <h3 style={{ color: "var(--c2)", marginBottom: "15px" }}>
-            Changer mon mot de passe
-          </h3>
+        <GestionSection label="Sécurité">
+          <GestionField label="Nouveau mot de passe" hint="Laisser vide pour ne pas changer">
+            <input
+              className="gestion-input"
+              type="password"
+              value={newPwd}
+              onChange={e => setNewPwd(e.target.value)}
+              placeholder="6 caractères minimum"
+            />
+          </GestionField>
+          {newPwd && (
+            <GestionField label="Confirmer">
+              <input
+                className="gestion-input"
+                type="password"
+                value={confirmPwd}
+                onChange={e => setConfirmPwd(e.target.value)}
+                placeholder="••••••••"
+              />
+            </GestionField>
+          )}
+        </GestionSection>
 
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Nouveau mot de passe (optionnel)"
-            style={{
-              width: "100%",
-              padding: "12px 16px",
-              border: "2px solid var(--c1)",
-              borderRadius: "10px",
-              background: "rgba(241, 235, 219, 0.05)",
-              color: "var(--text)",
-              fontFamily: "Quicksand, sans-serif",
-              fontSize: "1rem",
-              marginBottom: "10px",
-            }}
-          />
+        {/* Message feedback */}
+        {message && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "13px 16px", borderRadius: 12, marginBottom: 16,
+            background: message.ok ? "rgba(74,222,128,.07)" : "rgba(248,113,113,.07)",
+            border: `1px solid ${message.ok ? "rgba(74,222,128,.2)" : "rgba(248,113,113,.2)"}`,
+          }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+              background: message.ok ? "#4ade80" : "#f87171",
+            }} />
+            <span style={{
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: ".82rem", fontWeight: 400,
+              color: message.ok ? "rgba(74,222,128,.85)" : "rgba(248,113,113,.85)",
+            }}>
+              {message.text}
+            </span>
+          </div>
+        )}
 
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirmer le mot de passe"
-            style={{
-              width: "100%",
-              padding: "12px 16px",
-              border: "2px solid var(--c1)",
-              borderRadius: "10px",
-              background: "rgba(241, 235, 219, 0.05)",
-              color: "var(--text)",
-              fontFamily: "Quicksand, sans-serif",
-              fontSize: "1rem",
-            }}
-          />
-        </div>
-
-        {/* Bouton enregistrer */}
+        {/* Bouton sauvegarder */}
         <button
           onClick={handleSave}
           disabled={saving}
           style={{
-            width: "100%",
-            padding: "15px",
-            background: saving ? "#888" : "var(--c2)",
-            color: "var(--fond)",
-            border: "none",
-            borderRadius: "12px",
-            fontSize: "1.1rem",
-            fontWeight: "700",
+            width: "100%", padding: "15px",
+            background: saving ? "rgba(219,135,143,.4)" : "var(--rose)",
+            color: "#0d0d18", border: "none", borderRadius: 14,
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: ".82rem", fontWeight: 700,
+            letterSpacing: "2.5px", textTransform: "uppercase",
             cursor: saving ? "not-allowed" : "pointer",
-            transition: "all 0.2s ease",
+            transition: "all .22s ease",
           }}
+          onMouseOver={e => { if (!saving) (e.currentTarget.style.background = "var(--cream)"); }}
+          onMouseOut={e  => { if (!saving) (e.currentTarget.style.background = "var(--rose)"); }}
         >
-          {saving ? "Enregistrement..." : "Enregistrer les modifications"}
+          {saving ? "Enregistrement…" : "Enregistrer"}
         </button>
 
-        {/* Message de retour */}
-        {message && (
-          <p
+        {/* Zone danger */}
+        <div style={{ marginTop: 48 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+            <div style={{ flex: 1, height: 1, background: "rgba(248,113,113,.1)" }} />
+            <span style={{
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: ".55rem", fontWeight: 300,
+              letterSpacing: "3px", textTransform: "uppercase",
+              color: "rgba(248,113,113,.3)",
+            }}>
+              Zone de danger
+            </span>
+            <div style={{ flex: 1, height: 1, background: "rgba(248,113,113,.1)" }} />
+          </div>
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              router.push("/");
+            }}
             style={{
-              marginTop: "15px",
-              textAlign: "center",
-              fontSize: "1rem",
-              fontWeight: "600",
-              color: message.includes("✅") ? "#4ade80" : "#f87171",
+              width: "100%", padding: "13px",
+              background: "transparent",
+              border: "1px solid rgba(248,113,113,.18)",
+              borderRadius: 14, color: "rgba(248,113,113,.5)",
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: ".78rem", fontWeight: 500,
+              letterSpacing: "2px", textTransform: "uppercase",
+              cursor: "pointer", transition: "all .2s ease",
+            }}
+            onMouseOver={e => {
+              e.currentTarget.style.borderColor = "rgba(248,113,113,.4)";
+              e.currentTarget.style.color = "rgba(248,113,113,.8)";
+              e.currentTarget.style.background = "rgba(248,113,113,.05)";
+            }}
+            onMouseOut={e => {
+              e.currentTarget.style.borderColor = "rgba(248,113,113,.18)";
+              e.currentTarget.style.color = "rgba(248,113,113,.5)";
+              e.currentTarget.style.background = "transparent";
             }}
           >
-            {message}
+            Se déconnecter
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Composants locaux ───────────────────────────────────────────────────── */
+function GestionSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{
+      background: "rgba(241,235,219,.02)",
+      border: "1px solid rgba(241,235,219,.06)",
+      borderRadius: 18, padding: "24px 24px 8px",
+      marginBottom: 16,
+    }}>
+      <p style={{
+        fontFamily: "'Outfit', sans-serif",
+        fontSize: ".58rem", fontWeight: 500,
+        letterSpacing: "3px", textTransform: "uppercase",
+        color: "rgba(241,235,219,.25)",
+        marginBottom: 20,
+      }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function GestionField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+        <label style={{
+          fontFamily: "'Outfit', sans-serif",
+          fontSize: ".65rem", fontWeight: 500,
+          letterSpacing: "1.5px", textTransform: "uppercase",
+          color: "rgba(241,235,219,.38)",
+        }}>
+          {label}
+        </label>
+        {hint && (
+          <span style={{
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: ".58rem", fontWeight: 300,
+            color: "rgba(241,235,219,.2)",
+          }}>
+            {hint}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Toggle({ label, sub, checked, onChange }: {
+  label: string; sub?: string; checked: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 16, padding: "12px 0", marginBottom: 4,
+        borderBottom: "1px solid rgba(241,235,219,.04)",
+        cursor: "pointer",
+      }}
+      onClick={() => onChange(!checked)}
+    >
+      <div>
+        <p style={{
+          fontFamily: "'Outfit', sans-serif",
+          fontSize: ".85rem", fontWeight: 400,
+          color: checked ? "rgba(241,235,219,.75)" : "rgba(241,235,219,.4)",
+          marginBottom: sub ? 2 : 0,
+          transition: "color .2s",
+        }}>
+          {label}
+        </p>
+        {sub && (
+          <p style={{
+            fontFamily: "'Outfit', sans-serif",
+            fontSize: ".65rem", fontWeight: 300,
+            color: "rgba(241,235,219,.22)",
+          }}>
+            {sub}
           </p>
         )}
+      </div>
+
+      {/* Toggle switch */}
+      <div style={{
+        position: "relative", width: 44, height: 24,
+        borderRadius: 12, flexShrink: 0,
+        background: checked ? "var(--rose)" : "rgba(241,235,219,.1)",
+        transition: "background .2s ease",
+      }}>
+        <div style={{
+          position: "absolute", top: 4, left: checked ? 24 : 4,
+          width: 16, height: 16, borderRadius: "50%",
+          background: "white",
+          transition: "left .2s cubic-bezier(.23,1,.32,1)",
+          boxShadow: "0 1px 4px rgba(0,0,0,.3)",
+        }} />
       </div>
     </div>
   );

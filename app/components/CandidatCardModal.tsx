@@ -1,9 +1,8 @@
 // app/components/CandidatCardModal.tsx
 "use client";
 
-import Image from "next/image";
 import { User } from "@supabase/supabase-js";
-import { calculAge, pointsPourAge, capitalizeFirst } from "@/utils/fonctions";
+import { calculAge, pointsPourAge, capitalizeFirst, formatNomCarte, formatFr } from "@/utils/fonctions";
 import { useState } from "react";
 import { useAddCandidat } from "@/app/hooks/useAddCandidat";
 import { CandidatRecherche } from "@/types";
@@ -12,7 +11,6 @@ interface CandidatCardModalProps {
   candidat: CandidatRecherche;
   onClose: () => void;
   user?: User | null;
-  // Props optionnelles pour la salle d'attente
   saison?: number;
   parisEnCours?: number;
   existingPariIds?: string[];
@@ -20,48 +18,36 @@ interface CandidatCardModalProps {
 }
 
 export default function CandidatCardModal({
-  candidat,
-  onClose,
-  user,
-  saison,
-  parisEnCours,
-  existingPariIds,
-  onCandidatAdded,
+  candidat, onClose, user, saison, parisEnCours, existingPariIds, onCandidatAdded,
 }: CandidatCardModalProps) {
   const [message, setMessage] = useState("");
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const { addCandidat, loading: adding } = useAddCandidat(user?.id);
 
-  const age = calculAge(candidat.ddn, null);
+  const age    = calculAge(candidat.ddn, null);
   const points = pointsPourAge(age);
+  const currentYear = saison ?? new Date().getFullYear();
+  const canAdd      = !!user && (parisEnCours !== undefined ? parisEnCours < 10 : true);
+  const alreadyAdded = existingPariIds?.includes(candidat.wikidata_id);
+  const showButton   = user && !alreadyAdded && canAdd;
+  const disabledMsg  = alreadyAdded ? "Déjà dans ta salle d'attente" : !canAdd ? "Tu as déjà 10 candidats" : null;
 
   const photoUrl = candidat.photo
-    ? `https://commons.wikimedia.org/wiki/Special:FilePath/${candidat.photo}`
-    : "/candidat.png";
-
-  const currentYear = saison ?? new Date().getFullYear();
-  const canAdd = !!user && (parisEnCours !== undefined ? parisEnCours < 10 : true);
-  const alreadyAdded = existingPariIds?.includes(candidat.wikidata_id);
-  const showButton = user && !alreadyAdded && canAdd;
-  const disabledMessage = alreadyAdded
-    ? "Déjà dans ta salle d'attente"
-    : !canAdd
-    ? "Tu as déjà 10 candidats"
+    ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(candidat.photo.replace(/ /g, "_"))}`
     : null;
 
+  const { display, fontSize, letterSpacing } = formatNomCarte(candidat.nom);
+
   const ajouterPari = () => {
-    if (!user) { setMessage("Tu dois être connecté pour ajouter un pari !"); return; }
-    if (!canAdd) { setMessage("Tu as déjà 10 paris cette année !"); return; }
+    if (!user)        { setMessage("Tu dois être connecté pour ajouter un pari !"); return; }
+    if (!canAdd)      { setMessage("Tu as déjà 10 paris cette année !"); return; }
     if (alreadyAdded) { setMessage("Tu as déjà parié sur ce candidat cette année !"); return; }
-    setShowConfirmModal(true);
+    setShowConfirm(true);
   };
 
   const confirmerAjout = async () => {
-    setShowConfirmModal(false);
-    setMessage("");
-
+    setShowConfirm(false); setMessage("");
     const result = await addCandidat(candidat, currentYear);
-
     if (result.success) {
       setMessage("✅ Pari ajouté avec succès !");
       onCandidatAdded?.();
@@ -72,245 +58,227 @@ export default function CandidatCardModal({
   };
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Fiche de ${candidat.nom}`}
-      style={{
-        position: "fixed",
-        top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.8)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: "20px",
-      }}
-    >
+    <>
+      {/* ── BACKDROP ── */}
       <div
-        style={{ position: "relative", maxWidth: "350px", width: "100%" }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0,
+          background: "rgba(8,8,16,.88)", backdropFilter: "blur(8px)",
+          zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 20,
+          animation: "fadeUp .25s ease",
+        }}
       >
-        {/* Bouton fermer */}
-        <button
-          onClick={onClose}
-          aria-label="Fermer"
+        {/* ── CARTE CENTRALE ── */}
+        <div
+          onClick={e => e.stopPropagation()}
           style={{
-            position: "absolute",
-            top: "-15px", right: "-15px",
-            width: "40px", height: "40px",
-            borderRadius: "50%",
-            background: "var(--c2)",
-            color: "var(--fond)",
-            border: "3px solid var(--fond)",
-            fontSize: "1.5rem",
-            cursor: "pointer",
-            zIndex: 1001,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: "700",
-            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 16,
+            transform: "scale(1)",
+            animation: "modalIn .3s cubic-bezier(.23,1,.32,1)",
           }}
         >
-          ×
-        </button>
+          {/* La carte panini agrandie */}
+          <div
+            className="panini-card"
+            style={{ width: 250, height: 360, "--strip-w": "40px" } as React.CSSProperties}
+          >
+            <div className="pc-bg" />
+            <div className="pc-strip">
+              <span className="pc-vname" style={{ fontSize, letterSpacing }}>{display}</span>
+            </div>
+            <span className="pc-serial">
+              {candidat.wikidata_id?.replace("Q", "#") ?? "—"}
+            </span>
 
-        {/* Carte Panini */}
-        <div
-          className="panini-card panini-card-modal"
-          style={{ margin: 0, transform: "none !important", transition: "none !important" }}
-        >
-          <div className="panini-header">
-            <h3 className="panini-name">{candidat.nom}</h3>
-          </div>
-
-          <div className="panini-photo-container" style={{ height: "300px" }}>
-            <Image
-              src={photoUrl}
-              alt={candidat.nom}
-              width={300}
-              height={300}
-              className="panini-photo"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "/candidat.png";
-              }}
-            />
-          </div>
-
-          <div className="panini-info">
-            <div className="panini-dates">
-              <span className="panini-value">
-                Né⸱e le{" "}
-                {candidat.ddn
-                  ? new Date(candidat.ddn).toLocaleDateString("fr-FR")
-                  : "—"}
-              </span>
+            {/* Photo */}
+            <div className="pc-photo-zone" style={{ height: 220 }}>
+              {photoUrl ? (
+                <>
+                  <div className="pc-placeholder" id="modal-ph">◆</div>
+                  <img
+                    src={photoUrl}
+                    alt={candidat.nom}
+                    onLoad={e => {
+                      (e.target as HTMLImageElement).style.display = "block";
+                      const ph = document.getElementById("modal-ph");
+                      if (ph) ph.style.display = "none";
+                    }}
+                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    style={{ display: "none", position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center top" }}
+                  />
+                </>
+              ) : (
+                <div className="pc-placeholder">◆</div>
+              )}
             </div>
 
-            <div className="panini-stats">
-              <div className="panini-stat">
-                <span className="panini-stat-label">Âge</span>
-                <span className="panini-stat-value">
-                  {age ?? "—"} an{age && age > 1 ? "s" : ""}
-                </span>
-              </div>
-              <div className="panini-stat panini-stat-points">
-                <span className="panini-stat-label">Points</span>
-                <span className="panini-stat-value">
-                  {points} pt{points > 1 ? "s" : ""}
-                </span>
-              </div>
+            {/* Points */}
+            <div className="pc-pts" style={{ top: 202, width: 48, height: 48 }}>
+              <span className="pn" style={{ fontSize: "1.15rem" }}>{points}</span>
+              <span className="pl">pts</span>
             </div>
 
-            {candidat.description && (
-              <p className="panini-description">{capitalizeFirst(candidat.description)}</p>
-            )}
+            {/* Infos */}
+            <div className="pc-info">
+              <div className="pc-dates">
+                <div className="pc-date-item">
+                  <span className="pc-date-lbl">Naissance</span>
+                  <span className="pc-date-val" style={{ fontSize: ".78rem" }}>{formatFr(candidat.ddn)}</span>
+                </div>
+              </div>
+              {age !== null && (
+                <div className="pc-age" style={{ fontSize: ".6rem" }}>{age} ans</div>
+              )}
+              {candidat.description && (
+                <p style={{
+                  fontFamily: "'Outfit', sans-serif",
+                  fontSize: ".55rem", fontWeight: 300,
+                  color: "rgba(241,235,219,.4)",
+                  fontStyle: "italic",
+                  lineHeight: 1.5,
+                  marginTop: 4,
+                }}>
+                  {capitalizeFirst(candidat.description)}
+                </p>
+              )}
+            </div>
+          </div>
 
-            {user && (
-              <>
-                {showButton ? (
-                  <button
-                    onClick={ajouterPari}
-                    disabled={adding}
-                    style={{
-                      marginTop: "15px",
-                      width: "100%",
-                      padding: "12px",
-                      background: adding ? "#888" : "var(--c2)",
-                      color: "var(--fond)",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontSize: "1rem",
-                      fontWeight: "700",
-                      cursor: adding ? "not-allowed" : "pointer",
-                      transition: "all 0.2s ease",
-                    }}
-                  >
-                    {adding ? "Ajout en cours..." : "Ajouter à mes paris"}
-                  </button>
-                ) : disabledMessage && (
-                  <div
-                    style={{
-                      marginTop: "15px",
-                      width: "100%",
-                      padding: "12px",
-                      background: "rgba(78, 57, 41, 0.5)",
-                      color: "rgba(241, 235, 219, 0.7)",
-                      border: "2px solid var(--c1)",
-                      borderRadius: "8px",
-                      fontSize: "0.95rem",
-                      fontWeight: "600",
-                      textAlign: "center",
-                    }}
-                  >
-                    {disabledMessage}
-                  </div>
-                )}
-              </>
-            )}
-
-            {message && (
-              <p
-                style={{
-                  marginTop: "10px",
-                  fontSize: "0.9rem",
-                  fontWeight: "600",
+          {/* ── Bouton ajouter / message ── */}
+          {user && (
+            <div style={{ width: 250, display: "flex", flexDirection: "column", gap: 8 }}>
+              {showButton && (
+                <button
+                  onClick={ajouterPari}
+                  disabled={adding}
+                  style={{
+                    width: "100%", padding: "13px",
+                    background: adding ? "rgba(219,135,143,.4)" : "var(--rose)",
+                    color: "#0d0d18", border: "none", borderRadius: 12,
+                    fontFamily: "'Outfit', sans-serif", fontSize: ".78rem", fontWeight: 700,
+                    letterSpacing: "2px", textTransform: "uppercase",
+                    cursor: adding ? "not-allowed" : "pointer",
+                    transition: "all .22s ease",
+                  }}
+                >
+                  {adding ? "Ajout en cours…" : "Ajouter à mes paris"}
+                </button>
+              )}
+              {disabledMsg && !showButton && (
+                <div style={{
+                  width: "100%", padding: "12px",
+                  background: "rgba(241,235,219,.04)",
+                  border: "1px solid rgba(241,235,219,.1)",
+                  borderRadius: 12,
+                  fontFamily: "'Outfit', sans-serif",
+                  fontSize: ".75rem", fontWeight: 400,
+                  color: "rgba(241,235,219,.35)",
                   textAlign: "center",
+                }}>
+                  {disabledMsg}
+                </div>
+              )}
+              {message && (
+                <p style={{
+                  textAlign: "center",
+                  fontFamily: "'Outfit', sans-serif",
+                  fontSize: ".8rem", fontWeight: 600,
                   color: message.includes("✅") ? "#4ade80" : "#f87171",
-                }}
-              >
-                {message}
-              </p>
-            )}
-          </div>
+                }}>
+                  {message}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Fermer */}
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 24px", background: "transparent",
+              border: "1px solid rgba(241,235,219,.14)", borderRadius: 30,
+              fontFamily: "'Outfit', sans-serif", color: "rgba(241,235,219,.38)",
+              fontSize: ".7rem", fontWeight: 500, letterSpacing: 2, textTransform: "uppercase",
+              cursor: "pointer", transition: "all .2s ease",
+            }}
+            onMouseOver={e => { (e.target as HTMLElement).style.borderColor = "rgba(241,235,219,.32)"; (e.target as HTMLElement).style.color = "rgba(241,235,219,.65)"; }}
+            onMouseOut={e  => { (e.target as HTMLElement).style.borderColor = "rgba(241,235,219,.14)"; (e.target as HTMLElement).style.color = "rgba(241,235,219,.38)"; }}
+          >
+            Fermer
+          </button>
         </div>
       </div>
 
-      {/* Modal de confirmation */}
-      {showConfirmModal && (
+      {/* ── MODALE DE CONFIRMATION ── */}
+      {showConfirm && (
         <div
+          onClick={() => setShowConfirm(false)}
           style={{
-            position: "fixed",
-            top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.9)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2000,
-            padding: "20px",
+            position: "fixed", inset: 0,
+            background: "rgba(0,0,0,.92)", backdropFilter: "blur(6px)",
+            zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 20,
           }}
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowConfirmModal(false)}
         >
           <div
+            onClick={e => e.stopPropagation()}
             style={{
-              background: "linear-gradient(145deg, var(--card-bg) 0%, #1f3240 100%)",
-              border: "3px solid var(--c2)",
-              borderRadius: "20px",
-              padding: "30px",
-              maxWidth: "400px",
-              width: "100%",
+              background: "#0f0e1e",
+              border: "1px solid rgba(219,135,143,.25)",
+              borderRadius: 20, padding: "32px 28px",
+              maxWidth: 380, width: "100%",
               textAlign: "center",
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ color: "var(--c2)", marginBottom: "20px", fontSize: "1.5rem" }}>
+            <h3 style={{ fontFamily: "'Outfit', sans-serif", fontSize: "1.2rem", fontWeight: 800, color: "var(--cream)", marginBottom: 12 }}>
               Confirmer le pari
             </h3>
-
-            <p style={{ marginBottom: "10px", fontSize: "1.1rem", lineHeight: "1.6" }}>
-              Êtes-vous sûr de vouloir ajouter{" "}
-              <strong style={{ color: "var(--c2)" }}>{candidat.nom}</strong>{" "}
-              à vos paris pour {currentYear} ?
+            <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: ".88rem", fontWeight: 300, color: "rgba(241,235,219,.55)", lineHeight: 1.6, marginBottom: 8 }}>
+              Ajouter <strong style={{ color: "var(--rose)" }}>{candidat.nom}</strong> à tes paris pour {currentYear} ?
             </p>
-
-            <p style={{ marginBottom: "25px", fontSize: "0.95rem", color: "rgba(241, 235, 219, 0.7)", fontStyle: "italic" }}>
-              Cette action est définitive et ne peut pas être annulée.
+            <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: ".72rem", fontWeight: 300, color: "rgba(241,235,219,.28)", marginBottom: 24, fontStyle: "italic" }}>
+              Cette action est définitive.
             </p>
-
-            <div style={{ display: "flex", gap: "15px", justifyContent: "center" }}>
+            <div style={{ display: "flex", gap: 10 }}>
               <button
-                onClick={() => setShowConfirmModal(false)}
+                onClick={() => setShowConfirm(false)}
                 style={{
-                  padding: "12px 24px",
-                  background: "var(--c1)",
-                  color: "var(--text)",
-                  border: "none",
-                  borderRadius: "10px",
-                  fontSize: "1rem",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  transition: "all 0.2s ease",
+                  flex: 1, padding: "12px",
+                  background: "rgba(241,235,219,.06)",
+                  border: "1px solid rgba(241,235,219,.12)", borderRadius: 12,
+                  fontFamily: "'Outfit', sans-serif", fontSize: ".75rem", fontWeight: 600,
+                  letterSpacing: 1, color: "rgba(241,235,219,.5)", cursor: "pointer",
                 }}
               >
                 Annuler
               </button>
-
               <button
                 onClick={confirmerAjout}
                 disabled={adding}
                 style={{
-                  padding: "12px 24px",
-                  background: adding ? "#888" : "var(--c2)",
-                  color: "var(--fond)",
-                  border: "none",
-                  borderRadius: "10px",
-                  fontSize: "1rem",
-                  fontWeight: "700",
+                  flex: 1, padding: "12px",
+                  background: adding ? "rgba(219,135,143,.4)" : "var(--rose)",
+                  color: "#0d0d18", border: "none", borderRadius: 12,
+                  fontFamily: "'Outfit', sans-serif", fontSize: ".75rem", fontWeight: 700,
+                  letterSpacing: 1, textTransform: "uppercase",
                   cursor: adding ? "not-allowed" : "pointer",
-                  transition: "all 0.2s ease",
                 }}
               >
-                {adding ? "Ajout..." : "Confirmer"}
+                {adding ? "Ajout…" : "Confirmer"}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+
+      <style>{`
+        @keyframes modalIn {
+          from { opacity: 0; transform: translateY(24px) scale(.94); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+      `}</style>
+    </>
   );
 }
