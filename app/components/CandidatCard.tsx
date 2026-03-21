@@ -68,7 +68,7 @@ export default function CandidatCard({ candidat, showDescription = true }: Candi
         {/* Bulle points */}
         <div className="pc-pts">
           <span className="pn">{pts}</span>
-          <span className="pl">pts</span>
+          <span className="pl">{pts > 1 ? "pts" : "pt"}</span>
         </div>
 
         {/* Infos bas */}

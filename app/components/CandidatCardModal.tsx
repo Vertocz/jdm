@@ -133,7 +133,7 @@ export default function CandidatCardModal({
             {/* Points */}
             <div className="pc-pts" style={{ top: 202, width: 48, height: 48 }}>
               <span className="pn" style={{ fontSize: "1.15rem" }}>{points}</span>
-              <span className="pl">pts</span>
+              <span className="pl">{points > 1 ? "pts" : "pt"}</span>
             </div>
 
             {/* Infos */}
