@@ -5,6 +5,10 @@ import ConditionalHeader from "./components/ConditionalHeader";
 export const metadata = {
   title: "Le Jeu de la Mort",
   description: "Chaque année, constitue ton équipe. Si l'une d'elles disparaît, tu marques des points.",
+    icons: {
+    icon: "/favicon.png",          // onglet navigateur
+    apple: "/favicon.png",         // iOS
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

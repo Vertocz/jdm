@@ -4,7 +4,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchCandidats } from "@/app/hooks/useSearchCandidats";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseAuth } from "@/app/hooks/useSupabaseAuth";
@@ -30,6 +29,17 @@ const FALLBACK: Persona[] = [
 
 function photoUrl(f: string) {
   return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(f.replace(/ /g, "_"))}`;
+}
+
+/* ── FIX 1 : roue crantée SVG ── */
+function GearIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
 }
 
 /* ══ Carte résultat de recherche ══════════════════════════════════════════ */
@@ -151,6 +161,7 @@ function PaniniCard({ persona }: { persona: Persona }) {
       <div className="pc-photo-zone">
         <div className="pc-placeholder" id={`ph-${persona.id}-${ser}`}>◆</div>
         {persona.photo && (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={photoUrl(persona.photo)}
             alt={persona.nom}
@@ -196,15 +207,10 @@ export default function HomePage() {
   const { user }  = useSupabaseAuth();
   const { signup, loading: signupLoading } = useSignup();
 
-  // Carte animée
-  const [personas,   setPersonas]   = useState<Persona[]>(FALLBACK);
-  const [renderTick, setRenderTick] = useState(0); // déclenche un re-render quand un slot change de persona
-
-  // Nav
-  const [scrolled,   setScrolled]   = useState(false);
-  const [burgerOpen, setBurgerOpen] = useState(false);
-
-  // Auth drawer
+  const [personas,    setPersonas]    = useState<Persona[]>(FALLBACK);
+  const [renderTick,  setRenderTick]  = useState(0);
+  const [scrolled,    setScrolled]    = useState(false);
+  const [burgerOpen,  setBurgerOpen]  = useState(false);
   const [authOpen,    setAuthOpen]    = useState(false);
   const [authMode,    setAuthMode]    = useState<"signin" | "signup">("signin");
   const [authEmail,   setAuthEmail]   = useState("");
@@ -212,31 +218,20 @@ export default function HomePage() {
   const [authConfirm, setAuthConfirm] = useState("");
   const [authName,    setAuthName]    = useState("");
   const [authError,   setAuthError]   = useState("");
+  const [searchOpen,  setSearchOpen]  = useState(false);
+  const [modalCand,   setModalCand]   = useState<CandidatRecherche | null>(null);
 
-  // Recherche
-  const [searchOpen, setSearchOpen] = useState(false);
+  const canvasRef  = useRef<HTMLCanvasElement>(null);
+  const heroRef    = useRef<HTMLElement>(null);
+  const mouseRef   = useRef({ x: 0.5, y: 0.5 });
+  const heroBgRef  = useRef<HTMLDivElement>(null);
 
-  // Modal carte
-  const [modalCand, setModalCand] = useState<CandidatRecherche | null>(null);
-
-  // Refs
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
-  const heroRef     = useRef<HTMLElement>(null);
-  const mouseRef    = useRef({ x: 0.5, y: 0.5 });
-  const heroBgRef   = useRef<HTMLDivElement>(null);
-
-  // ── Charger les personas depuis Supabase ──────────────────────────────────
+  // ── Charger les personas ──────────────────────────────────────────────────
   useEffect(() => {
-    supabase
-      .from("candidats")
-      .select("id, nom, ddn, ddd, photo")
-      // On ne met pas de .order("id")
-      .limit(50) // On en prend un plus gros paquet
+    supabase.from("candidats").select("id, nom, ddn, ddd, photo").limit(50)
       .then(({ data }) => {
         if (data && data.length >= 4) {
-          // On mélange le tableau en JS (Algorithme de Fisher-Yates ou simple sort)
           const shuffled = [...data].sort(() => Math.random() - 0.5);
-          // On ne garde que les 12 premiers après mélange
           setPersonas(shuffled.slice(0, 12) as Persona[]);
         }
       });
@@ -249,7 +244,7 @@ export default function HomePage() {
     return () => window.removeEventListener("scroll", handler);
   }, []);
 
-  // ── Fermer sur clic extérieur (recherche + burger) ────────────────────────
+  // ── Fermer burger sur clic extérieur ─────────────────────────────────────
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const burger = document.getElementById("hBurger");
@@ -272,42 +267,28 @@ export default function HomePage() {
     const resize = () => { W = canvas.width = hero.offsetWidth; H = canvas.height = hero.offsetHeight; };
     resize();
     window.addEventListener("resize", resize);
-
     const STARS = Array.from({ length: 180 }, (_, i) => {
       const bright = i < 10;
-      return {
-        x: Math.random(), y: Math.random(), ox: 0, oy: 0,
-        r:     bright ? Math.random() * .65 + .45 : Math.random() * .5 + .12,
-        base:  bright ? Math.random() * .28 + .1  : Math.random() * .1 + .025,
-        phase: Math.random() * Math.PI * 2,
-        spd:   Math.random() * .0007 + .0003,
-        hue:   Math.random() < .14 ? "rgba(219,135,143," : "rgba(241,235,219,",
-        bright,
-      };
+      return { x: Math.random(), y: Math.random(), ox: 0, oy: 0,
+        r: bright ? Math.random()*.65+.45 : Math.random()*.5+.12,
+        base: bright ? Math.random()*.28+.1 : Math.random()*.1+.025,
+        phase: Math.random()*Math.PI*2, spd: Math.random()*.0007+.0003,
+        hue: Math.random()<.14 ? "rgba(219,135,143," : "rgba(241,235,219,", bright };
     });
-
     let t = 0, rafId: number;
     function draw() {
-      ctx.clearRect(0, 0, W, H);
-      t++;
+      ctx.clearRect(0,0,W,H); t++;
       const mx = mouseRef.current.x, my = mouseRef.current.y;
       STARS.forEach(s => {
-        const alpha = s.base + Math.sin(t * s.spd * 60 + s.phase) * s.base * .55;
-        const dx = (s.x + s.ox) - mx, dy = (s.y + s.oy) - my;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const radius = s.bright ? .22 : .14, strength = s.bright ? .0018 : .0007;
-        if (dist < radius && dist > 0) { const f = (1 - dist / radius) * strength; s.ox += (dx / dist) * f; s.oy += (dy / dist) * f; }
-        s.ox *= .94; s.oy *= .94;
-        const px = (s.x + s.ox) * W, py = (s.y + s.oy) * H;
-        if (s.bright && alpha > .15) {
-          const g = ctx.createRadialGradient(px, py, 0, px, py, s.r * 4);
-          g.addColorStop(0, s.hue + alpha * .35 + ")");
-          g.addColorStop(1, s.hue + "0)");
-          ctx.fillStyle = g;
-          ctx.fillRect(px - s.r * 4, py - s.r * 4, s.r * 8, s.r * 8);
-        }
-        ctx.beginPath(); ctx.arc(px, py, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = s.hue + Math.max(0, alpha) + ")"; ctx.fill();
+        const alpha = s.base + Math.sin(t*s.spd*60+s.phase)*s.base*.55;
+        const dx = (s.x+s.ox)-mx, dy = (s.y+s.oy)-my;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        const radius = s.bright?.22:.14, strength = s.bright?.0018:.0007;
+        if (dist<radius&&dist>0){const f=(1-dist/radius)*strength;s.ox+=(dx/dist)*f;s.oy+=(dy/dist)*f;}
+        s.ox*=.94; s.oy*=.94;
+        const px=(s.x+s.ox)*W, py=(s.y+s.oy)*H;
+        if(s.bright&&alpha>.15){const g=ctx.createRadialGradient(px,py,0,px,py,s.r*4);g.addColorStop(0,s.hue+alpha*.35+")");g.addColorStop(1,s.hue+"0)");ctx.fillStyle=g;ctx.fillRect(px-s.r*4,py-s.r*4,s.r*8,s.r*8);}
+        ctx.beginPath();ctx.arc(px,py,s.r,0,Math.PI*2);ctx.fillStyle=s.hue+Math.max(0,alpha)+")";ctx.fill();
       });
       rafId = requestAnimationFrame(draw);
     }
@@ -315,17 +296,14 @@ export default function HomePage() {
     return () => { window.removeEventListener("resize", resize); cancelAnimationFrame(rafId); };
   }, []);
 
-  // Animation gérée par rAF dans le bloc ci-dessous
-
-  // ── Souris sur le hero (parallax + étoiles) ───────────────────────────────
+  // ── Souris hero ──────────────────────────────────────────────────────────
   const handleHeroMouse = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const nx = (e.clientX - r.left) / r.width;
-    const ny = (e.clientY - r.top)  / r.height;
+    const nx = (e.clientX-r.left)/r.width, ny = (e.clientY-r.top)/r.height;
     mouseRef.current = { x: nx, y: ny };
     if (heroBgRef.current) {
       heroBgRef.current.style.background = `
-        radial-gradient(ellipse 65% 55% at ${50 + (nx - .5) * 22}% ${50 + (ny - .5) * 18}%, rgba(219,135,143,.06) 0%, transparent 65%),
+        radial-gradient(ellipse 65% 55% at ${50+(nx-.5)*22}% ${50+(ny-.5)*18}%, rgba(219,135,143,.06) 0%, transparent 65%),
         radial-gradient(ellipse 55% 45% at 85% 20%, rgba(41,62,78,.3) 0%, transparent 50%),
         radial-gradient(ellipse 50% 40% at 80% 85%, rgba(78,57,41,.18) 0%, transparent 50%)`;
     }
@@ -336,45 +314,35 @@ export default function HomePage() {
     setAuthMode(mode); setAuthError("");
     setAuthEmail(""); setAuthPwd(""); setAuthConfirm(""); setAuthName("");
   };
-
   const handleAuth = async () => {
     setAuthError("");
     if (authMode === "signin") {
       const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPwd });
       if (error) { setAuthError("Email ou mot de passe incorrect"); return; }
-      setAuthOpen(false);
-      router.push("/salle-attente");
+      setAuthOpen(false); router.push("/salle-attente");
     } else {
       const result = await signup({ email: authEmail, password: authPwd, confirmPassword: authConfirm, displayName: authName });
       if (!result.success) { setAuthError(result.error ?? "Erreur"); return; }
-      setAuthOpen(false);
-      router.push("/salle-attente");
+      setAuthOpen(false); router.push("/salle-attente");
     }
   };
-
   const openAuth  = () => setAuthOpen(true);
   const closeAuth = () => setAuthOpen(false);
+  const handleSelect = (c: CandidatRecherche) => { setSearchOpen(false); setModalCand(c); };
 
-  // ── Recherche ─────────────────────────────────────────────────────────────
-  const handleSelect = (c: CandidatRecherche) => {
-    setSearchOpen(false); setModalCand(c);
-  };
+  // ── Refs animation rAF ────────────────────────────────────────────────────
+  const N_SLOTS     = 2;
+  const cardEls     = useRef<(HTMLDivElement|null)[]>(Array.from({length: N_SLOTS}, () => null));
+  const personaIdxR = useRef<number[]>(Array.from({length: N_SLOTS}, (_, i) => i));
+  const nextIdxR    = useRef(5);
+  const cycleR      = useRef<number[]>(Array.from({length: N_SLOTS}, () => -1));
+  const personasR   = useRef<Persona[]>([]);
+  const rafTimeR    = useRef<number|null>(null);
+  const timeR       = useRef(0);
+  const rafIdR      = useRef<number|null>(null);
 
-  // ── Refs pour l'animation rAF (lecture seule côté React) ────────────────
-  const N_SLOTS      = 2;
-  const cardEls      = useRef<(HTMLDivElement|null)[]>(Array.from({length: N_SLOTS}, () => null));
-  const personaIdxR  = useRef<number[]>(Array.from({length: N_SLOTS}, (_, i) => i));
-  const nextIdxR     = useRef(5);
-  const cycleR       = useRef<number[]>(Array.from({length: N_SLOTS}, () => -1));
-  const personasR    = useRef<Persona[]>([]);
-  const rafTimeR     = useRef<number|null>(null);
-  const timeR        = useRef(0);
-  const rafIdR       = useRef<number | null>(null);
-
-  // Garde personasR à jour
   useEffect(() => { personasR.current = personas; }, [personas]);
 
-  // Init slots quand les personas changent
   useEffect(() => {
     if (!personas.length) return;
     personaIdxR.current = Array.from({length: N_SLOTS}, (_, i) => i % personas.length);
@@ -382,33 +350,23 @@ export default function HomePage() {
     setRenderTick(t => t + 1);
   }, [personas.length]);
 
-  // ── rAF : mouvement continu, courbe douce, personas par refs ─────────────
   useEffect(() => {
-    const N        = N_SLOTS;
-    const PERIOD   = N * 5000;   // ms pour un tour complet d'un slot
-    const CONT_H   = 580;        // hauteur du conteneur
-    const CARD_H   = 300;
-    const BY       = CONT_H + CARD_H / 2 + 10;  // y entrée (sous le bas)
-    const TY       = -CARD_H / 2 - 10;           // y sortie (au-dessus du haut)
-    const X0       = 8;     // x de base (px depuis la gauche du conteneur)
-    const XA       = 22;    // amplitude de l'arc horizontal
-    const XB       = 10;    // dérive linéaire vers la droite
-    const RMAX     = 2.8;   // rotation max en degrés
+    const N      = N_SLOTS;
+    const PERIOD = N * 5000;
+    const CONT_H = 580, CARD_H = 300;
+    const BY = CONT_H + CARD_H/2 + 10, TY = -CARD_H/2 - 10;
+    const X0 = 8, XA = 22, XB = 10, RMAX = 2.8;
 
     function frame(t: number) {
       const dt = rafTimeR.current !== null ? t - rafTimeR.current : 0;
       rafTimeR.current = t;
       timeR.current   += dt;
-
       const pers = personasR.current;
       if (!pers.length) { rafIdR.current = requestAnimationFrame(frame); return; }
-
       for (let i = 0; i < N; i++) {
-        const raw   = timeR.current / PERIOD + i / N;
-        const p     = raw % 1;                    // phase 0→1 continue
+        const raw = timeR.current / PERIOD + i / N;
+        const p   = raw % 1;
         const cycle = Math.floor(raw);
-
-        // Mise à jour persona quand le slot boucle (p ≈ 0, card invisible sous le fade)
         if (cycle !== cycleR.current[i]) {
           cycleR.current[i] = cycle;
           if (cycle > 0) {
@@ -417,53 +375,51 @@ export default function HomePage() {
             setRenderTick(tt => tt + 1);
           }
         }
-
-        // Position sur la courbe
         const y   = BY + (TY - BY) * p;
         const x   = X0 + XA * Math.sin(p * Math.PI) + XB * p;
-        const rot = RMAX * Math.cos(p * Math.PI);   // incliné à droite en bas, à gauche en haut
-
-        const el = cardEls.current[i];
-        if (el) el.style.transform = `translate(${x}px, ${y - CARD_H / 2}px) rotate(${rot}deg)`;
+        const rot = RMAX * Math.cos(p * Math.PI);
+        const el  = cardEls.current[i];
+        if (el) el.style.transform = `translate(${x}px, ${y - CARD_H/2}px) rotate(${rot}deg)`;
       }
-
       rafIdR.current = requestAnimationFrame(frame);
     }
-
     rafIdR.current = requestAnimationFrame(frame);
     return () => { if (rafIdR.current) cancelAnimationFrame(rafIdR.current); };
-  }, []); // une seule fois — tout passe par des refs
+  }, []);
 
   return (
     <>
-      {/* ── OVERLAY DE RECHERCHE ── */}
       {searchOpen && (
-        <SearchOverlay
-          onSelect={c => setModalCand(c)}
-          onClose={() => setSearchOpen(false)}
-        />
+        <SearchOverlay onSelect={c => setModalCand(c)} onClose={() => setSearchOpen(false)} />
       )}
 
-      {/* ── NAV ── */}
+      {/* ── FIX 1 : <img> natif au lieu de <Image> → plus d'erreur d'hydratation ── */}
       <nav className={`h-nav${scrolled ? " scrolled" : ""}`}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <Image src="/logo.png" alt="Le Jeu de la Mort" width={72} height={72}
-            style={{ objectFit: "contain" }} priority />
-        </Link>
+        <Link href="/" className="h-nav-logo" style={{ opacity:1, animation:"none" }}>Le Jeu <em>de la Mort</em></Link>
 
         <div className="h-nav-links">
-          <Link href="/"            className={`h-nav-link${true ? " active" : ""}`}>Accueil</Link>
-          <Link href="/classement"  className="h-nav-link">Classement</Link>
-          <Link href="/in-memoriam" className="h-nav-link">In Memoriam</Link>
-          <Link href="/favoris"     className="h-nav-link">Favoris</Link>
+          <Link href="/"            className="h-nav-link active">Accueil</Link>
           {user && <Link href="/salle-attente" className="h-nav-link">Ma salle</Link>}
+          <Link href="/classement"  className="h-nav-link">Classement</Link>
+          <Link href="/favoris"     className="h-nav-link">Favoris</Link>
+          <Link href="/in-memoriam" className="h-nav-link">In Memoriam</Link>
         </div>
 
+        {/* ── FIX 2 : roue crantée + déconnexion côté desktop ── */}
         <div className="h-nav-actions">
           {user ? (
-            <button className="h-nav-btn" onClick={() => { supabase.auth.signOut(); router.push("/"); }}>
-              Déconnexion
-            </button>
+            <>
+              <Link href="/gestion" title="Paramètres"
+                style={{ display:"flex", alignItems:"center", justifyContent:"center", width:34, height:34, borderRadius:"50%", border:"1px solid rgba(241,235,219,.12)", color:"rgba(241,235,219,.4)", textDecoration:"none", transition:"all .2s ease" }}
+                onMouseOver={e=>{const el=e.currentTarget;el.style.borderColor="rgba(219,135,143,.5)";el.style.color="var(--rose)";el.style.background="rgba(219,135,143,.07)";}}
+                onMouseOut={e=>{const el=e.currentTarget;el.style.borderColor="rgba(241,235,219,.12)";el.style.color="rgba(241,235,219,.4)";el.style.background="transparent";}}
+              >
+                <GearIcon />
+              </Link>
+              <button className="h-nav-btn" onClick={() => { supabase.auth.signOut(); router.push("/"); }}>
+                Déconnexion
+              </button>
+            </>
           ) : (
             <button className="h-nav-btn" onClick={openAuth}>Connexion</button>
           )}
@@ -475,14 +431,17 @@ export default function HomePage() {
         </button>
       </nav>
 
-      {/* ── MENU MOBILE ── */}
+      {/* ── FIX 3 : menu mobile complet avec Paramètres + Déconnexion ── */}
       <div id="hMobileMenu" className={`h-mobile-menu${burgerOpen ? " open" : ""}`}>
         {[
-          { href: "/",             label: "Accueil",     active: true },
-          { href: "/classement",   label: "Classement",  active: false },
-          { href: "/in-memoriam",  label: "In Memoriam", active: false },
-          { href: "/favoris",      label: "Favoris",     active: false },
-          ...(user ? [{ href: "/salle-attente", label: "Ma salle", active: false }] : []),
+          { href: "/",             label: "Accueil",    active: true  },
+          { href: "/classement",   label: "Classement", active: false },
+          { href: "/in-memoriam",  label: "In Memoriam",active: false },
+          { href: "/favoris",      label: "Favoris",    active: false },
+          ...(user ? [
+            { href: "/salle-attente", label: "Ma salle",   active: false },
+            { href: "/gestion",       label: "Paramètres", active: false },
+          ] : []),
         ].map(({ href, label, active }) => (
           <Link key={href} href={href} onClick={() => setBurgerOpen(false)}
             className={`h-mobile-link${active ? " active" : ""}`}>
@@ -491,11 +450,13 @@ export default function HomePage() {
         ))}
         <div className="h-mobile-sep" />
         {user ? (
-          <button className="h-mobile-login" onClick={() => { setBurgerOpen(false); supabase.auth.signOut(); }}>
+          <button className="h-mobile-login"
+            onClick={() => { setBurgerOpen(false); supabase.auth.signOut(); router.push("/"); }}>
             Déconnexion
           </button>
         ) : (
-          <button className="h-mobile-login" onClick={() => { setBurgerOpen(false); openAuth(); }}>
+          <button className="h-mobile-login"
+            onClick={() => { setBurgerOpen(false); openAuth(); }}>
             Connexion / Inscription
           </button>
         )}
@@ -508,18 +469,14 @@ export default function HomePage() {
         <div className="h-auth-inner">
           <div className="h-auth-heading">Bon<em>jour.</em></div>
           <p className="h-auth-sub">Connecte-toi pour gérer ta sélection</p>
-
           <div className="h-auth-tabs">
             {(["signin", "signup"] as const).map(m => (
-              <button key={m} className={`h-auth-tab${authMode === m ? " active" : ""}`}
-                onClick={() => resetAuth(m)}>
+              <button key={m} className={`h-auth-tab${authMode === m ? " active" : ""}`} onClick={() => resetAuth(m)}>
                 {m === "signin" ? "Connexion" : "Inscription"}
               </button>
             ))}
           </div>
-
           {authError && <div className="h-auth-error">{authError}</div>}
-
           {authMode === "signup" && (
             <div className="h-auth-field">
               <label className="h-auth-label">Pseudo</label>
@@ -545,11 +502,9 @@ export default function HomePage() {
                 value={authConfirm} onChange={e => setAuthConfirm(e.target.value)} />
             </div>
           )}
-
           <button className="h-auth-submit" onClick={handleAuth} disabled={signupLoading}>
             {signupLoading ? "Chargement…" : authMode === "signin" ? "Se connecter" : "Créer mon compte"}
           </button>
-
           <p className="h-auth-footer">
             En jouant, tu acceptes que ce jeu est de mauvais goût et que c&apos;est exactement pour ça qu&apos;il existe.
           </p>
@@ -561,7 +516,6 @@ export default function HomePage() {
         <canvas ref={canvasRef} id="star-canvas" />
         <div className="hero-bg" ref={heroBgRef} />
 
-        {/* GAUCHE */}
         <div className="hero-left">
           <p className="eyebrow">Paris, célébrités &amp; mauvais goût assumé</p>
           <h1 className="hero-title">Le Jeu<br /><em>de la Mort</em></h1>
@@ -570,56 +524,31 @@ export default function HomePage() {
             Si l&apos;une d&apos;elles vient à disparaître, tu marques des points.<br />
             Plus la personnalité est jeune, plus les points sont élevés.
           </p>
-
-          {/* Bouton recherche → overlay */}
-          <button
-            onClick={() => setSearchOpen(true)}
-            className="search-input"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              cursor: "pointer", textAlign: "left",
-              color: "rgba(241,235,219,.3)",
-              transition: "border-color .25s, background .25s",
-            }}
-            onMouseOver={e => {
-              const el = e.currentTarget;
-              el.style.borderColor = "rgba(219,135,143,.45)";
-              el.style.background  = "rgba(241,235,219,.07)";
-            }}
-            onMouseOut={e => {
-              const el = e.currentTarget;
-              el.style.borderColor = "rgba(241,235,219,.15)";
-              el.style.background  = "rgba(241,235,219,.05)";
-            }}
+          <button onClick={() => setSearchOpen(true)} className="search-input"
+            style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", textAlign:"left", color:"rgba(241,235,219,.3)", transition:"border-color .25s, background .25s" }}
+            onMouseOver={e=>{const el=e.currentTarget;el.style.borderColor="rgba(219,135,143,.45)";el.style.background="rgba(241,235,219,.07)";}}
+            onMouseOut={e=>{const el=e.currentTarget;el.style.borderColor="rgba(241,235,219,.15)";el.style.background="rgba(241,235,219,.05)";}}
           >
-            <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: ".95rem", fontWeight: 400 }}>
+            <span style={{ fontFamily:"'Outfit',sans-serif", fontSize:".95rem", fontWeight:400 }}>
               Rechercher une personnalité vivante…
             </span>
-            <span style={{ color: "rgba(241,235,219,.2)", fontSize: "1.1rem" }}>⌕</span>
+            <span style={{ color:"rgba(241,235,219,.2)", fontSize:"1.1rem" }}>⌕</span>
           </button>
         </div>
 
-        {/* DROITE — flux continu de cartes sur une courbe douce, piloté par rAF */}
         <div className="hero-right">
           <div style={{
-            position: "relative",
-            width: 260,
-            height: 580,
-            overflow: "hidden",
-            // Masque de fondu en haut et en bas (les cartes apparaissent/disparaissent naturellement)
-            WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 20%, black 78%, transparent 100%)",
-            maskImage:        "linear-gradient(to bottom, transparent 0%, black 20%, black 78%, transparent 100%)",
+            position:"relative", width:260, height:580, overflow:"hidden",
+            WebkitMaskImage:"linear-gradient(to bottom, transparent 0%, black 20%, black 78%, transparent 100%)",
+            maskImage:"linear-gradient(to bottom, transparent 0%, black 20%, black 78%, transparent 100%)",
           }}>
             {Array.from({ length: N_SLOTS }, (_, i) => {
-              const pers = personasR.current;
-              const pidx = personaIdxR.current[i] ?? 0;
+              const pers  = personasR.current;
+              const pidx  = personaIdxR.current[i] ?? 0;
               const persona = (pers.length ? pers[pidx % pers.length] : null) ?? FALLBACK[i % FALLBACK.length];
               return (
-                <div
-                  key={i}
-                  ref={el => { cardEls.current[i] = el; }}
-                  style={{ position: "absolute", top: 0, left: 0, width: 210, willChange: "transform" }}
-                >
+                <div key={i} ref={el => { cardEls.current[i] = el; }}
+                  style={{ position:"absolute", top:0, left:0, width:210, willChange:"transform" }}>
                   <PaniniCard persona={persona} />
                 </div>
               );
@@ -628,36 +557,15 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── MODAL CARTE ── */}
+      {/* ── MODAL ── */}
       {modalCand && (
-        <div
-          style={{
-            position: "fixed", inset: 0,
-            background: "rgba(8,8,16,.88)",
-            backdropFilter: "blur(8px)",
-            zIndex: 1000,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: 20,
-          }}
-          onClick={() => setModalCand(null)}
-        >
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}
+        <div style={{ position:"fixed", inset:0, background:"rgba(8,8,16,.88)", backdropFilter:"blur(8px)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}
+          onClick={() => setModalCand(null)}>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:20 }}
             onClick={e => e.stopPropagation()}>
             <CandidatCardModal candidat={modalCand} onClose={() => setModalCand(null)} user={user} />
-            <button
-              onClick={() => setModalCand(null)}
-              style={{
-                padding: "9px 24px",
-                background: "transparent",
-                border: "1px solid rgba(241,235,219,.14)",
-                borderRadius: 30,
-                color: "rgba(241,235,219,.38)",
-                fontFamily: "'Outfit', sans-serif",
-                fontSize: ".7rem", fontWeight: 500,
-                letterSpacing: 2, textTransform: "uppercase",
-                cursor: "pointer",
-              }}
-            >
+            <button onClick={() => setModalCand(null)}
+              style={{ padding:"9px 24px", background:"transparent", border:"1px solid rgba(241,235,219,.14)", borderRadius:30, color:"rgba(241,235,219,.38)", fontFamily:"'Outfit',sans-serif", fontSize:".7rem", fontWeight:500, letterSpacing:2, textTransform:"uppercase", cursor:"pointer" }}>
               Fermer
             </button>
           </div>

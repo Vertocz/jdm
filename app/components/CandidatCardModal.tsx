@@ -6,6 +6,7 @@ import { calculAge, pointsPourAge, capitalizeFirst, formatNomCarte, formatFr } f
 import { useState } from "react";
 import { useAddCandidat } from "@/app/hooks/useAddCandidat";
 import { CandidatRecherche } from "@/types";
+import Link from "next/link";
 
 interface CandidatCardModalProps {
   candidat: CandidatRecherche;
@@ -24,10 +25,12 @@ export default function CandidatCardModal({
   const [showConfirm, setShowConfirm] = useState(false);
   const { addCandidat, loading: adding } = useAddCandidat(user?.id);
 
-  const age    = calculAge(candidat.ddn, null);
+  const ddd    = (candidat as any).ddd ?? null;
+  const isDead = !!ddd;
+  const age    = calculAge(candidat.ddn, ddd);
   const points = pointsPourAge(age);
   const currentYear = saison ?? new Date().getFullYear();
-  const canAdd      = !!user && (parisEnCours !== undefined ? parisEnCours < 10 : true);
+  const canAdd      = !!user && !isDead && (parisEnCours !== undefined ? parisEnCours < 10 : true);
   const alreadyAdded = existingPariIds?.includes(candidat.wikidata_id);
   const showButton   = user && !alreadyAdded && canAdd;
   const disabledMsg  = alreadyAdded ? "Déjà dans ta salle d'attente" : !canAdd ? "Tu as déjà 10 candidats" : null;
@@ -81,7 +84,7 @@ export default function CandidatCardModal({
         >
           {/* La carte panini agrandie */}
           <div
-            className="panini-card"
+            className={`panini-card${isDead ? " dead" : ""}`}
             style={{ width: 250, height: 360, "--strip-w": "40px" } as React.CSSProperties}
           >
             <div className="pc-bg" />
@@ -127,6 +130,15 @@ export default function CandidatCardModal({
                   <span className="pc-date-lbl">Naissance</span>
                   <span className="pc-date-val" style={{ fontSize: ".78rem" }}>{formatFr(candidat.ddn)}</span>
                 </div>
+                {isDead && (
+                  <>
+                    <span className="pc-sep">→</span>
+                    <div className="pc-date-item">
+                      <span className="pc-date-lbl">Décès</span>
+                      <span className="pc-date-val" style={{ fontSize: ".78rem" }}>{formatFr(ddd)}</span>
+                    </div>
+                  </>
+                )}
               </div>
               {age !== null && (
                 <div className="pc-age" style={{ fontSize: ".6rem" }}>{age} ans</div>
@@ -193,21 +205,43 @@ export default function CandidatCardModal({
             </div>
           )}
 
-          {/* Fermer */}
-          <button
-            onClick={onClose}
-            style={{
-              padding: "8px 24px", background: "transparent",
-              border: "1px solid rgba(241,235,219,.14)", borderRadius: 30,
-              fontFamily: "'Outfit', sans-serif", color: "rgba(241,235,219,.38)",
-              fontSize: ".7rem", fontWeight: 500, letterSpacing: 2, textTransform: "uppercase",
-              cursor: "pointer", transition: "all .2s ease",
-            }}
-            onMouseOver={e => { (e.target as HTMLElement).style.borderColor = "rgba(241,235,219,.32)"; (e.target as HTMLElement).style.color = "rgba(241,235,219,.65)"; }}
-            onMouseOut={e  => { (e.target as HTMLElement).style.borderColor = "rgba(241,235,219,.14)"; (e.target as HTMLElement).style.color = "rgba(241,235,219,.38)"; }}
-          >
-            Fermer
-          </button>
+          {/* Actions bas */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+            <Link
+              href={`/candidat/${candidat.id}`}
+              onClick={onClose}
+              style={{
+                padding: "8px 24px",
+                background: "rgba(241,235,219,.06)",
+                border: "1px solid rgba(241,235,219,.1)",
+                borderRadius: 30,
+                fontFamily: "'Outfit', sans-serif",
+                color: "rgba(241,235,219,.6)",
+                fontSize: ".7rem", fontWeight: 500,
+                letterSpacing: 2, textTransform: "uppercase",
+                cursor: "pointer", transition: "all .2s ease",
+                textDecoration: "none",
+              }}
+              onMouseOver={e => { const el = e.currentTarget; el.style.borderColor = "rgba(241,235,219,.25)"; el.style.color = "var(--cream)"; }}
+              onMouseOut={e  => { const el = e.currentTarget; el.style.borderColor = "rgba(241,235,219,.1)";  el.style.color = "rgba(241,235,219,.6)"; }}
+            >
+              Voir sa fiche
+            </Link>
+            <button
+              onClick={onClose}
+              style={{
+                padding: "8px 24px", background: "transparent",
+                border: "1px solid rgba(241,235,219,.14)", borderRadius: 30,
+                fontFamily: "'Outfit', sans-serif", color: "rgba(241,235,219,.38)",
+                fontSize: ".7rem", fontWeight: 500, letterSpacing: 2, textTransform: "uppercase",
+                cursor: "pointer", transition: "all .2s ease",
+              }}
+              onMouseOver={e => { (e.target as HTMLElement).style.borderColor = "rgba(241,235,219,.32)"; (e.target as HTMLElement).style.color = "rgba(241,235,219,.65)"; }}
+              onMouseOut={e  => { (e.target as HTMLElement).style.borderColor = "rgba(241,235,219,.14)"; (e.target as HTMLElement).style.color = "rgba(241,235,219,.38)"; }}
+            >
+              Fermer
+            </button>
+          </div>
         </div>
       </div>
 

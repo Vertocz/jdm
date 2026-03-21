@@ -12,7 +12,15 @@ export default function Favoris() {
   const [topYear, setTopYear] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
+  const [screenW, setScreenW] = useState(820);
   const currentYear = new Date().getFullYear();
+
+  useEffect(() => {
+    const check = () => setScreenW(window.innerWidth);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const doLoad = async () => {
     setError(null); setLoading(true);
@@ -96,7 +104,7 @@ export default function Favoris() {
 
       {/* ── PODIUM ALL TIME ── */}
       {topAll.length > 0 && (
-        <Podium entries={topAll} maxVotes={maxVotesAll} />
+        <Podium entries={topAll} maxVotes={maxVotesAll} screenW={screenW} />
       )}
 
       {/* ── SECTION ANNUELLE ── */}
@@ -120,36 +128,47 @@ export default function Favoris() {
             <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg, rgba(241,235,219,.08), transparent)" }} />
           </div>
 
-          <Podium entries={topYear} maxVotes={maxVotesYear} accent="year" />
+          <Podium entries={topYear} maxVotes={maxVotesYear} accent="year" screenW={screenW} />
         </>
       )}
     </div>
   );
 }
 
+/* ── Cache scrollbar podium ─────────────────────────────────────────────── */
+/* Inline style scrollbarWidth:none gère Firefox, le style global gère WebKit */
+
 /* ── Podium ──────────────────────────────────────────────────────────────── */
-function Podium({ entries, maxVotes, accent = "alltime" }: {
+function Podium({ entries, maxVotes, accent = "alltime", screenW = 820 }: {
   entries: Entry[];
   maxVotes: number;
   accent?: "alltime" | "year";
+  screenW?: number;
 }) {
   // Réordonne : [2e, 1er, 3e] pour l'effet podium
   const order = entries.length === 3
     ? [entries[1], entries[0], entries[2]]
     : entries;
 
-  const podiumHeights = entries.length === 3 ? [60, 0, 100] : [0, 0, 0]; // translateY en px (plus bas = plus bas)
-  const isTop = (i: number) => entries.length === 3 && i === 1; // index dans le tableau d'origine
+
+  // Échelles par rang : #1 grand, #2 moyen, #3 petit
+  const RANK_SCALES = [1, 0.82, 0.68]; // rank 0, 1, 2
+  const PAD = 48;
+  // Largeur totale avec les 3 échelles : 210*1 + 210*0.82 + 210*0.68 + 2*16 + 48
+  const NATURAL_W = 210 * (1 + 0.82 + 0.68) + 2 * 16 + PAD; // ~619px
+  // Si l'écran est plus étroit, on scale tout proportionnellement
+  const globalScale = screenW < NATURAL_W ? Math.max(0.5, screenW / NATURAL_W) : 1;
+  const gap = Math.round(16 * globalScale);
 
   return (
+    <div style={{ overflow: "hidden", margin: "0 auto", maxWidth: 860 }}>
     <div style={{
-      maxWidth: 820,
-      margin: "40px auto 60px",
-      padding: "0 24px",
+      margin: "24px 0 60px",
+      padding: "18px 24px 0",  /* 18px top = absorbe hover 10px + marge */
       display: "flex",
       alignItems: "flex-end",
       justifyContent: "center",
-      gap: 16,
+      gap: gap,
     }}>
       {order.map((entry, podiumPos) => {
         // retrouver le rang réel (0, 1, 2)
@@ -163,24 +182,23 @@ function Podium({ entries, maxVotes, accent = "alltime" }: {
             style={{
               display: "flex",
               flexDirection: "column",
+              width: Math.round(210 * (RANK_SCALES[rank] ?? 0.68) * globalScale),
+              flexShrink: 0,
               alignItems: "center",
               gap: 0,
-              // Le 1er est plus haut (translateY négatif)
-              transform: isFirst ? "translateY(-32px)" : "translateY(0)",
-              transition: "transform .4s ease",
             }}
           >
             {/* Rang en ghost text */}
             <div style={{
               fontFamily: "'Outfit', sans-serif",
-              fontSize: isFirst ? "5rem" : "3.5rem",
+              fontSize: `${(isFirst ? 4.5 : rank === 1 ? 3 : 2.2) * globalScale}rem`,
               fontWeight: 900,
               lineHeight: 1,
               letterSpacing: "-3px",
               color: isFirst
                 ? "rgba(219,135,143,.12)"
                 : "rgba(241,235,219,.06)",
-              marginBottom: -12,
+              marginBottom: -8,
               userSelect: "none",
               alignSelf: "flex-start",
               paddingLeft: 4,
@@ -189,13 +207,7 @@ function Podium({ entries, maxVotes, accent = "alltime" }: {
             </div>
 
             {/* Bloc vote */}
-            <div style={{
-              width: 210,
-              marginBottom: 12,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}>
+            <div style={{ width: Math.round(210 * (RANK_SCALES[rank] ?? 0.68) * globalScale), marginBottom: 8, display: "flex", flexDirection: "column", gap: 8 }}>
               {/* Chiffre de votes */}
               <div style={{
                 display: "flex",
@@ -204,7 +216,7 @@ function Podium({ entries, maxVotes, accent = "alltime" }: {
               }}>
                 <span style={{
                   fontFamily: "'Outfit', sans-serif",
-                  fontSize: isFirst ? "2.8rem" : "2rem",
+                  fontSize: `${(isFirst ? 2.6 : rank === 1 ? 1.9 : 1.4) * globalScale}rem`,
                   fontWeight: 900,
                   lineHeight: 1,
                   color: isFirst ? "var(--rose)" : "rgba(241,235,219,.65)",
@@ -242,11 +254,25 @@ function Podium({ entries, maxVotes, accent = "alltime" }: {
               </div>
             </div>
 
-            {/* Carte */}
-            <CandidatCard candidat={entry.candidat} showDescription={false} />
+            {/* Carte — échelle par rang, alignée en bas */}
+            {(() => {
+              const s = (RANK_SCALES[rank] ?? 0.68) * globalScale;
+              const w = Math.round(210 * s);
+              const h = Math.round(300 * s);
+              return (
+                <div style={{ width: w, height: h, position: "relative", overflow: "visible", flexShrink: 0 }}>
+                  <div style={{ position: "absolute", top: 0, left: 0, transformOrigin: "top left", transform: `scale(${s})` }}>
+                    <CandidatCard candidat={entry.candidat} showDescription={false} />
+                  </div>
+                </div>
+              );
+            })()}
+
+
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

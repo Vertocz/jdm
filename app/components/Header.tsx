@@ -9,7 +9,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseAuth } from "@/app/hooks/useSupabaseAuth";
 import { useSignup } from "@/app/hooks/useSignUp";
 
-/* ── Icône roue crantée SVG inline ── */
 function GearIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
@@ -45,88 +44,61 @@ export default function Header() {
     if (authMode === "signin") {
       const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPwd });
       if (error) { setAuthError("Email ou mot de passe incorrect"); return; }
-      setAuthOpen(false);
-      router.push("/salle-attente");
+      setAuthOpen(false); router.push("/salle-attente");
     } else {
       const result = await signup({ email: authEmail, password: authPwd, confirmPassword: authConfirm, displayName: authName });
       if (!result.success) { setAuthError(result.error ?? "Erreur"); return; }
-      setAuthOpen(false);
-      router.push("/salle-attente");
+      setAuthOpen(false); router.push("/salle-attente");
     }
   };
 
-  const navLink = (href: string, label: string) => (
-    <Link key={href} href={href}
-      className={`h-nav-link${pathname === href ? " active" : ""}`}>
-      {label}
-    </Link>
-  );
+  const close = () => setBurgerOpen(false);
+  const isActive = (href: string) => pathname === href;
 
   return (
     <>
       {/* ── NAV ── */}
       <nav className="h-nav scrolled" style={{ position: "sticky" }}>
 
-        {/* Logo image */}
-        <Link href="/" style={{ display: "flex", alignItems: "center", opacity: 1, animation: "none", flexShrink: 0, textDecoration: "none", color: "inherit" }}>
-          <Image
-            src="/logo.png"
-            alt="Le Jeu de la Mort"
-            width={72}
-            height={72}
-            style={{ objectFit: "contain" }}
-            priority
-          />
-          <span className="h-nav-logo">Le Jeu <em>de la Mort</em></span>
+        {/* Logo */}
+        <Link href="/" style={{ display: "flex", alignItems: "center", flexShrink: 0, opacity: 1, animation: "none" }}>
+          <Image src="/logo.png" alt="Le Jeu de la Mort" width={52} height={52}
+            style={{ objectFit: "contain" }} priority />
         </Link>
 
-        {/* Liens desktop */}
+        {/* Liens desktop — cachés sur mobile via CSS */}
         <div className="h-nav-links" style={{ opacity: 1, animation: "none" }}>
-          {navLink("/classement",  "Classement")}
-          {navLink("/in-memoriam", "In Memoriam")}
-          {navLink("/favoris",     "Favoris")}
-          {user && navLink("/salle-attente", "Ma salle")}
+          {[
+            { href: "/",             label: "Accueil"     },
+            ...(user ? [{ href: "/salle-attente", label: "Ma salle" }] : []),
+            { href: "/classement",   label: "Classement"  },
+            { href: "/favoris",      label: "Favoris"     },
+            { href: "/in-memoriam",  label: "In Memoriam" },
+          ].map(({ href, label }) => (
+            <Link key={href} href={href} className={`h-nav-link${isActive(href) ? " active" : ""}`}>
+              {label}
+            </Link>
+          ))}
         </div>
 
-        {/* Actions desktop */}
-        <div className="h-nav-actions" style={{ opacity: 1, animation: "none", display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Actions desktop — cachées sur mobile via CSS */}
+        <div className="h-nav-actions" style={{ opacity: 1, animation: "none" }}>
           {user ? (
             <>
-              {/* Roue crantée → gestion */}
-              <Link
-                href="/gestion"
-                title="Paramètres du compte"
+              <Link href="/gestion" title="Paramètres"
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 34, height: 34,
-                  borderRadius: "50%",
-                  border: `1px solid ${pathname === "/gestion" ? "rgba(219,135,143,.5)" : "rgba(241,235,219,.12)"}`,
-                  color: pathname === "/gestion" ? "var(--rose)" : "rgba(241,235,219,.4)",
-                  textDecoration: "none",
-                  transition: "all .2s ease",
-                  flexShrink: 0,
+                  width: 34, height: 34, borderRadius: "50%",
+                  border: `1px solid ${isActive("/gestion") ? "rgba(219,135,143,.5)" : "rgba(241,235,219,.12)"}`,
+                  color: isActive("/gestion") ? "var(--rose)" : "rgba(241,235,219,.4)",
+                  textDecoration: "none", transition: "all .2s ease", flexShrink: 0,
                 }}
-                onMouseOver={e => {
-                  const el = e.currentTarget;
-                  el.style.borderColor = "rgba(219,135,143,.5)";
-                  el.style.color = "var(--rose)";
-                  el.style.background = "rgba(219,135,143,.07)";
-                }}
-                onMouseOut={e => {
-                  const el = e.currentTarget;
-                  el.style.borderColor = pathname === "/gestion" ? "rgba(219,135,143,.5)" : "rgba(241,235,219,.12)";
-                  el.style.color = pathname === "/gestion" ? "var(--rose)" : "rgba(241,235,219,.4)";
-                  el.style.background = "transparent";
-                }}
+                onMouseOver={e => { const el = e.currentTarget; el.style.borderColor="rgba(219,135,143,.5)"; el.style.color="var(--rose)"; el.style.background="rgba(219,135,143,.07)"; }}
+                onMouseOut={e  => { const el = e.currentTarget; el.style.borderColor=isActive("/gestion")?"rgba(219,135,143,.5)":"rgba(241,235,219,.12)"; el.style.color=isActive("/gestion")?"var(--rose)":"rgba(241,235,219,.4)"; el.style.background="transparent"; }}
               >
                 <GearIcon />
               </Link>
-
-              {/* Déconnexion */}
-              <button
-                className="h-nav-btn"
-                onClick={() => { supabase.auth.signOut(); router.push("/"); }}
-              >
+              <button className="h-nav-btn" onClick={() => { supabase.auth.signOut(); router.push("/"); }}>
                 Déconnexion
               </button>
             </>
@@ -149,29 +121,33 @@ export default function Header() {
       {/* ── MENU MOBILE ── */}
       <div className={`h-mobile-menu${burgerOpen ? " open" : ""}`} style={{ top: 64 }}>
         {[
-          { href: "/",             label: "Accueil" },
-          { href: "/classement",   label: "Classement" },
-          { href: "/in-memoriam",  label: "In Memoriam" },
-          { href: "/favoris",      label: "Favoris" },
+          { href: "/",              label: "Accueil"     },
           ...(user ? [
-            { href: "/salle-attente", label: "Ma salle" },
-            { href: "/gestion",       label: "Paramètres" },
+            { href: "/salle-attente", label: "Ma salle"  },
+          ] : []),
+          { href: "/classement",    label: "Classement"  },
+          { href: "/favoris",       label: "Favoris"     },
+          { href: "/in-memoriam",   label: "In Memoriam" },
+          ...(user ? [
+            { href: "/gestion",     label: "Paramètres"  },
           ] : []),
         ].map(({ href, label }) => (
-          <Link key={href} href={href} onClick={() => setBurgerOpen(false)}
-            className={`h-mobile-link${pathname === href ? " active" : ""}`}>
+          <Link key={href} href={href} onClick={close}
+            className={`h-mobile-link${isActive(href) ? " active" : ""}`}>
             {label}
           </Link>
         ))}
         <div className="h-mobile-sep" />
         {user ? (
           <button className="h-mobile-login"
-            onClick={() => { setBurgerOpen(false); supabase.auth.signOut(); router.push("/"); }}>
+            style={{ width: "auto", alignSelf: "center" }}
+            onClick={() => { close(); supabase.auth.signOut(); router.push("/"); }}>
             Déconnexion
           </button>
         ) : (
           <button className="h-mobile-login"
-            onClick={() => { setBurgerOpen(false); setAuthOpen(true); }}>
+            style={{ width: "auto", alignSelf: "center" }}
+            onClick={() => { close(); setAuthOpen(true); }}>
             Connexion / Inscription
           </button>
         )}
@@ -184,7 +160,6 @@ export default function Header() {
         <div className="h-auth-inner">
           <div className="h-auth-heading">Bon<em>jour.</em></div>
           <p className="h-auth-sub">Connecte-toi pour gérer ta sélection</p>
-
           <div className="h-auth-tabs">
             {(["signin", "signup"] as const).map(m => (
               <button key={m} className={`h-auth-tab${authMode === m ? " active" : ""}`}
@@ -193,9 +168,7 @@ export default function Header() {
               </button>
             ))}
           </div>
-
           {authError && <div className="h-auth-error">{authError}</div>}
-
           {authMode === "signup" && (
             <div className="h-auth-field">
               <label className="h-auth-label">Pseudo</label>
@@ -221,11 +194,9 @@ export default function Header() {
                 value={authConfirm} onChange={e => setAuthConfirm(e.target.value)} />
             </div>
           )}
-
           <button className="h-auth-submit" onClick={handleAuth} disabled={signupLoading}>
             {signupLoading ? "Chargement…" : authMode === "signin" ? "Se connecter" : "Créer mon compte"}
           </button>
-
           <p className="h-auth-footer">
             En jouant, tu acceptes que ce jeu est de mauvais goût et que c&apos;est exactement pour ça qu&apos;il existe.
           </p>

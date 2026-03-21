@@ -53,6 +53,7 @@ function SearchResultCard({
         <div className="pc-strip">
           <span className="pc-vname" style={{ fontSize, letterSpacing }}>{display}</span>
         </div>
+        <span className="pc-serial">#{String(candidat.wikidata_id?.replace("Q","")).padStart(4,"0")}</span>
 
         <div className="pc-photo-zone">
           <div className="pc-placeholder" id={`sr-ph-${candidat.id}`}>◆</div>
@@ -324,6 +325,14 @@ export default function SalleAttente() {
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState<string | null>(null);
   const [searchOpen,    setSearchOpen]    = useState(false);
+  const [screenW,      setScreenW]      = useState(800);
+
+  useEffect(() => {
+    const check = () => setScreenW(window.innerWidth);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
   const [selected,      setSelected]      = useState<CandidatRecherche | null>(null);
   const yearInitialized = useRef(false);
 
@@ -384,7 +393,6 @@ export default function SalleAttente() {
   const coupDePoker    = enCoursAvecAge.length > 0 ? enCoursAvecAge.reduce((y, p) => ((p.age ?? 999) < (y.age ?? 999) ? p : y)) : null;
   const moyenneAge     = enCoursAvecAge.length > 0 ? Math.round(enCoursAvecAge.reduce((s, p) => s + (p.age ?? 0), 0) / enCoursAvecAge.length) : 0;
   const existingIds    = parisForYear.map(p => p.candidats?.wikidata_id).filter(Boolean) as string[];
-  const progress       = enCours.length / 10;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
@@ -419,54 +427,37 @@ export default function SalleAttente() {
           </p>
         )}
 
-        <div className="year-pills" style={{ marginBottom: 32 }}>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center", marginBottom:32, padding:"0 16px" }}>
           {years.map(y => (
-            <button key={y} className={`year-pill${y === selectedYear ? " active" : ""}`}
-              onClick={() => setSelectedYear(y)}>{y}</button>
+            <button key={y} onClick={() => setSelectedYear(y)} style={{
+              padding:"7px 18px", borderRadius:30, cursor:"pointer", flexShrink:0,
+              fontFamily:"'Outfit',sans-serif", fontSize:".7rem", fontWeight:500, letterSpacing:"1.5px", textTransform:"uppercase",
+              border: y===selectedYear ? "1px solid rgba(219,135,143,.7)" : "1px solid rgba(241,235,219,.15)",
+              background: y===selectedYear ? "rgba(219,135,143,.15)" : "transparent",
+              color: y===selectedYear ? "var(--rose)" : "rgba(241,235,219,.4)",
+              transition:"all .22s ease",
+            }}>{y}</button>
           ))}
         </div>
       </div>
 
-      {/* ── STATS BAND ── */}
+      {/* ── STATS ── grille responsive ── */}
       <div style={{
-        display: "flex", alignItems: "stretch", justifyContent: "center",
-        gap: 0, maxWidth: 700, margin: "0 auto 40px", padding: "0 20px",
+        display: "grid",
+        gridTemplateColumns: coupDePoker ? "1fr 1fr" : "1fr 1fr",
+        gap: 10,
+        maxWidth: 500,
+        margin: "0 auto 36px",
+        padding: "0 16px",
       }}>
-        <StatBig value={totalPoints} label={`Point${totalPoints > 1 ? "s" : ""} en ${selectedYear}`} accent rounded="left" />
-
-        <div style={{
-          flex: 2, background: "rgba(241,235,219,.03)",
-          border: "1px solid rgba(241,235,219,.07)",
-          borderLeft: "none", borderRight: "none",
-          padding: "20px 24px",
-          display: "flex", flexDirection: "column", justifyContent: "center", gap: 10,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ fontFamily:"'Outfit',sans-serif", fontSize:".6rem", fontWeight:300, letterSpacing:"2px", textTransform:"uppercase", color:"rgba(241,235,219,.3)" }}>
-              Paris en cours
-            </span>
-            <span style={{ fontFamily:"'Outfit',sans-serif", fontSize:"1.1rem", fontWeight:800, color:"var(--cream)" }}>
-              {enCours.length}<span style={{ fontSize:".65rem", fontWeight:300, color:"rgba(241,235,219,.3)" }}>/10</span>
-            </span>
-          </div>
-          <div style={{ height: 4, background: "rgba(241,235,219,.08)", borderRadius: 4, overflow: "hidden" }}>
-            <div style={{
-              height: "100%", width: `${progress * 100}%`, borderRadius: 4,
-              background: progress >= 1
-                ? "linear-gradient(90deg, var(--rose), var(--rose-deep))"
-                : "linear-gradient(90deg, rgba(219,135,143,.6), rgba(219,135,143,.9))",
-              transition: "width .6s cubic-bezier(.23,1,.32,1)",
-            }} />
-          </div>
-        </div>
-
-        <StatBig value={moyenneAge ? `${moyenneAge} ans` : "—"} label="Moyenne d'âge" rounded="none" />
-
+        <StatTile value={totalPoints} label={`Pt${totalPoints > 1 ? "s" : ""} en ${selectedYear}`} accent />
+        <StatTile value={moyenneAge ? `${moyenneAge} ans` : "—"} label="Moyenne d\'âge" />
         {coupDePoker && (
-          <StatBig
+          <StatTile
             value={coupDePoker.candidats.nom.split(" ").slice(-1)[0]}
             label={`Coup de poker · ${coupDePoker.age} ans`}
-            rounded="right" small
+            small
+            wide
           />
         )}
       </div>
@@ -518,18 +509,14 @@ export default function SalleAttente() {
         {enCours.length === 0 ? (
           <EmptySection label={`Aucun pari en cours pour ${selectedYear}.`} cta="Clique sur le champ ci-dessus pour ajouter une personnalité." />
         ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 20, justifyContent: "center" }}>
-            {enCours.map(p => <CandidatCard key={p.id} candidat={p.candidats} />)}
-          </div>
+          <CardGrid items={enCours.map(p => p.candidats)} screenW={screenW} />
         )}
 
         <SectionHeader label="Paris gagnants" count={gagnants.length} style={{ marginTop: 60 }} />
         {gagnants.length === 0 ? (
           <EmptySection label={`Aucun pari gagnant en ${selectedYear} pour l'instant.`} />
         ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 20, justifyContent: "center" }}>
-            {gagnants.map(p => <CandidatCard key={p.id} candidat={p.candidats} />)}
-          </div>
+          <CardGrid items={gagnants.map(p => p.candidats)} screenW={screenW} />
         )}
       </div>
 
@@ -548,24 +535,88 @@ export default function SalleAttente() {
   );
 }
 
-/* ── Composants locaux ───────────────────────────────────────────────────── */
-function StatBig({ value, label, accent = false, rounded = "none", small = false }: {
-  value: string | number; label: string; accent?: boolean;
-  rounded?: "left" | "right" | "none"; small?: boolean;
-}) {
-  const r = { left: "12px 0 0 12px", right: "0 12px 12px 0", none: "0" };
+/* ── Grille de cartes : 2 colonnes sur mobile avec scale, flex sur desktop ── */
+function CardGrid({ items, screenW }: { items: any[]; screenW: number }) {
+  const CARD_W    = 210;
+  const CARD_H    = 300;
+  const GAP       = 12;
+  const PAD       = 32; // padding total gauche+droite
+  const COLS      = 2;
+  // Espace disponible pour 2 cartes + 1 gap
+  const available = screenW - PAD - GAP;
+  const colW      = available / COLS;
+  // Scale pour que la carte tienne dans la colonne
+  const scale     = colW < CARD_W ? Math.max(0.45, colW / CARD_W) : 1;
+  const isMobile  = scale < 1;
+
+  if (!isMobile) {
+    // Desktop : flex wrap centré normal
+    return (
+      <div style={{ display:"flex", flexWrap:"wrap", gap:20, justifyContent:"center", marginBottom:8 }}>
+        {items.map((c: any) => <CandidatCard key={c.id} candidat={c} />)}
+      </div>
+    );
+  }
+
+  // Mobile : grille 2 colonnes avec scale
+  const scaledW = Math.round(CARD_W * scale);
+  const scaledH = Math.round(CARD_H * scale);
+  const rowGap  = Math.round(GAP * scale);
+
   return (
     <div style={{
-      flex: 1, minWidth: 110,
+      display: "grid",
+      gridTemplateColumns: `repeat(${COLS}, ${scaledW}px)`,
+      gap: `${rowGap}px ${GAP}px`,
+      justifyContent: "center",
+      marginBottom: 8,
+    }}>
+      {items.map((cand: any) => (
+        <div key={cand.id} style={{ width: scaledW, height: scaledH, position:"relative", overflow:"visible" }}>
+          <div style={{
+            position: "absolute", top: 0, left: 0,
+            transformOrigin: "top left",
+            transform: `scale(${scale})`,
+          }}>
+            <CandidatCard candidat={cand} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Composants locaux ───────────────────────────────────────────────────── */
+function StatTile({ value, label, accent = false, small = false, wide = false }: {
+  value: string | number; label: string; accent?: boolean; small?: boolean; wide?: boolean;
+}) {
+  return (
+    <div style={{
+      gridColumn: wide ? "1 / -1" : undefined,
+      flexShrink: 0,
+      minWidth: 120,
       background: accent ? "rgba(219,135,143,.1)" : "rgba(241,235,219,.03)",
       border: `1px solid ${accent ? "rgba(219,135,143,.22)" : "rgba(241,235,219,.07)"}`,
-      borderRadius: r[rounded], padding: "20px 16px",
-      textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
+      borderRadius: 14,
+      padding: "16px 20px",
+      textAlign: "center",
+      display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
     }}>
-      <div style={{ fontFamily:"'Outfit',sans-serif", fontSize: small ? ".95rem" : "1.6rem", fontWeight:800, lineHeight:1, color: accent ? "var(--rose)" : "var(--cream)" }}>
+      <div style={{
+        fontFamily: "'Outfit',sans-serif",
+        fontSize: small ? ".9rem" : "1.5rem",
+        fontWeight: 800, lineHeight: 1,
+        color: accent ? "var(--rose)" : "var(--cream)",
+      }}>
         {value}
       </div>
-      <div style={{ fontFamily:"'Outfit',sans-serif", fontSize:".58rem", fontWeight:300, letterSpacing:"1px", textTransform:"uppercase", color:"rgba(241,235,219,.3)" }}>
+      <div style={{
+        fontFamily: "'Outfit',sans-serif",
+        fontSize: ".58rem", fontWeight: 300,
+        letterSpacing: "1px", textTransform: "uppercase",
+        color: "rgba(241,235,219,.3)",
+        marginTop: 2,
+      }}>
         {label}
       </div>
     </div>

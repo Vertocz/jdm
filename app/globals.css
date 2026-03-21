@@ -360,6 +360,7 @@
 .h-nav-link.active { color: var(--rose); }
 
 .h-nav-actions {
+  display: flex; flex-direction: row; align-items: center; gap: 8px;
   opacity: 0; animation: fadeUp .7s ease .3s forwards;
 }
 .h-nav-btn {
@@ -935,6 +936,105 @@
   cursor: pointer;
 }
 .panini-card:hover {
-  transform: translateY(-5px) scale(1.025);
+  transform: translateY(-10px) scale(1.025);
   box-shadow: 0 12px 40px rgba(219,135,143,.25), 0 30px 80px rgba(0,0,0,.5);
 }
+
+/* ══════════════════════════════════════
+   RESPONSIVE MOBILE — correctifs globaux
+══════════════════════════════════════ */
+
+/* Stats band — passe en 2×2 sur mobile */
+@media (max-width: 700px) {
+  .stats-band {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    margin: 0 16px 32px !important;
+    max-width: 100% !important;
+  }
+  .stats-band > * {
+    border-radius: 12px !important;
+    border: 1px solid rgba(241,235,219,.07) !important;
+    min-width: unset !important;
+  }
+  /* Le bloc "jauge" prend toute la largeur */
+  .stats-band-gauge {
+    grid-column: 1 / -1 !important;
+    border-left: 1px solid rgba(241,235,219,.07) !important;
+    border-right: 1px solid rgba(241,235,219,.07) !important;
+  }
+}
+
+/* Grille de cartes — défilement horizontal sur très petits écrans */
+@media (max-width: 500px) {
+  .cards-flex {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    justify-content: flex-start !important;
+    padding-bottom: 16px !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .cards-flex::-webkit-scrollbar { display: none; }
+  .cards-flex > * { flex-shrink: 0; }
+}
+
+/* Page candidat — stack vertical sur mobile */
+@media (max-width: 640px) {
+  .candidat-hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+    justify-items: center;
+  }
+  .candidat-hero-grid > div:first-child {
+    width: 100% !important;
+    max-width: 280px;
+  }
+}
+
+/* Page candidat + joueur — padding réduit sur mobile */
+@media (max-width: 640px) {
+  .page-inner {
+    padding: 0 16px !important;
+  }
+  .section-heading-row {
+    margin-bottom: 16px !important;
+  }
+}
+
+/* Sélecteur d'années — scroll horizontal sur mobile */
+@media (max-width: 500px) {
+  .year-pills {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    justify-content: flex-start !important;
+    padding: 4px 16px 12px !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-left: -16px !important;
+    margin-right: -16px !important;
+  }
+  .year-pills::-webkit-scrollbar { display: none; }
+  .year-pill { flex-shrink: 0; }
+}
+
+/* Hero — responsive */
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr !important;
+    padding: 60px 7% !important;
+    justify-items: center;
+  }
+  .hero-left {
+    padding: 80px 0 30px !important;
+    align-items: center !important;
+    text-align: center !important;
+  }
+  .hero-desc { text-align: center !important; }
+  .search-wrap { width: 100% !important; max-width: 500px !important; }
+  .hero-right { display: none !important; } /* carte masquée sur mobile */
+}
+
+/* Cache scrollbar sur le podium favoris */
+div[style*="overflowX"]::-webkit-scrollbar { display: none; }
