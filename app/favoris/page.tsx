@@ -98,7 +98,7 @@ export default function Favoris() {
           color: "rgba(219,135,143,.45)",
           marginBottom: 0,
         }}>
-          Les candidats les plus pariés de tous les temps
+          Les candidats les plus nommés de tous les temps
         </p>
       </div>
 
