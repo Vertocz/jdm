@@ -251,7 +251,7 @@ async function sendEmail(opts: { to: string; subject: string; html: string }): P
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'Le Jeu de la Mort <noreply@lejeudelamort.fr>', to: opts.to, subject: opts.subject, html: opts.html }),
+    body: JSON.stringify({ from: 'Le Jeu de la Mort <noreply@news.lejeudelamort.fr>', to: opts.to, subject: opts.subject, html: opts.html }),
   });
   if (!res.ok) { console.error('[cron] Erreur Resend:', await res.text()); return false; }
   return true;
