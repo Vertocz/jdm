@@ -50,7 +50,6 @@ function SearchResultCard({ candidat, onClick, animDelay }: {
       >
         <div className="pc-bg" />
         <div className="pc-strip"><span className="pc-vname" style={{ fontSize, letterSpacing }}>{display}</span></div>
-        <span className="pc-serial">#{String(candidat.wikidata_id?.replace("Q","") ?? "0").padStart(4,"0")}</span>
         <div className="pc-photo-zone">
           <div className="pc-placeholder" id={`sr-ph-${candidat.id}`}>◆</div>
           {photo && (
