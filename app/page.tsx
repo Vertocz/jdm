@@ -370,7 +370,7 @@ export default function HomePage() {
   const personasR    = useRef<Persona[]>([]);
   const rafTimeR     = useRef<number|null>(null);
   const timeR        = useRef(0);
-  const rafIdR       = useRef<number>();
+  const rafIdR       = useRef<number | null>(null);
 
   // Garde personasR à jour
   useEffect(() => { personasR.current = personas; }, [personas]);
