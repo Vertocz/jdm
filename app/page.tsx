@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseAuth } from "@/app/hooks/useSupabaseAuth";
 import { useSignup } from "@/app/hooks/useSignUp";
+import { useResetPassword } from "@/app/hooks/useResetPassword";
 import CandidatCardModal from "@/app/components/CandidatCardModal";
 import { calculAge, pointsPourAge, formatNomCarte, formatFr } from "@/utils/fonctions";
 import { CandidatRecherche } from "@/types";
@@ -207,18 +208,21 @@ export default function HomePage() {
   const router    = useRouter();
   const { user }  = useSupabaseAuth();
   const { signup, loading: signupLoading } = useSignup();
+  const { requestReset, loading: resetLoading } = useResetPassword();
 
   const [personas,    setPersonas]    = useState<Persona[]>(FALLBACK);
   const [renderTick,  setRenderTick]  = useState(0);
   const [scrolled,    setScrolled]    = useState(false);
   const [burgerOpen,  setBurgerOpen]  = useState(false);
   const [authOpen,    setAuthOpen]    = useState(false);
-  const [authMode,    setAuthMode]    = useState<"signin" | "signup">("signin");
+  const [authMode,    setAuthMode]    = useState<"signin" | "signup" | "reset">("signin");
   const [authEmail,   setAuthEmail]   = useState("");
   const [authPwd,     setAuthPwd]     = useState("");
   const [authConfirm, setAuthConfirm] = useState("");
   const [authName,    setAuthName]    = useState("");
   const [authError,   setAuthError]   = useState("");
+  const [resetSent,   setResetSent]   = useState(false);
+  const [signupConfirm, setSignupConfirm] = useState(false);
   const [searchOpen,  setSearchOpen]  = useState(false);
   const [modalCand,   setModalCand]   = useState<CandidatRecherche | null>(null);
 
@@ -311,8 +315,8 @@ export default function HomePage() {
   }, []);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const resetAuth = (mode: "signin" | "signup") => {
-    setAuthMode(mode); setAuthError("");
+  const resetAuth = (mode: "signin" | "signup" | "reset") => {
+    setAuthMode(mode); setAuthError(""); setResetSent(false); setSignupConfirm(false);
     setAuthEmail(""); setAuthPwd(""); setAuthConfirm(""); setAuthName("");
   };
   const handleAuth = async () => {
@@ -321,10 +325,15 @@ export default function HomePage() {
       const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPwd });
       if (error) { setAuthError("Email ou mot de passe incorrect"); return; }
       setAuthOpen(false); router.push("/salle-attente");
-    } else {
+    } else if (authMode === "signup") {
       const result = await signup({ email: authEmail, password: authPwd, confirmPassword: authConfirm, displayName: authName });
       if (!result.success) { setAuthError(result.error ?? "Erreur"); return; }
+      if (result.needsConfirmation) { setSignupConfirm(true); return; }
       setAuthOpen(false); router.push("/salle-attente");
+    } else {
+      const result = await requestReset(authEmail);
+      if (!result.success) { setAuthError(result.error ?? "Erreur"); return; }
+      setResetSent(true);
     }
   };
   const openAuth  = () => setAuthOpen(true);
@@ -416,8 +425,18 @@ export default function HomePage() {
             <>
               <Link href="/gestion" title="Paramètres"
                 style={{ display:"flex", alignItems:"center", justifyContent:"center", width:34, height:34, borderRadius:"50%", border:"1px solid rgba(241,235,219,.12)", color:"rgba(241,235,219,.4)", textDecoration:"none", transition:"all .2s ease" }}
-                onMouseOver={e=>{const el=e.currentTarget;el.style.borderColor="rgba(219,135,143,.5)";el.style.color="var(--rose)";el.style.background="rgba(219,135,143,.07)";}}
-                onMouseOut={e=>{const el=e.currentTarget;el.style.borderColor="rgba(241,235,219,.12)";el.style.color="rgba(241,235,219,.4)";el.style.background="transparent";}}
+                onMouseOver={(e: React.MouseEvent<HTMLAnchorElement>) => {
+                  const el = e.currentTarget;
+                  el.style.borderColor = "rgba(219,135,143,.5)";
+                  el.style.color = "var(--rose)";
+                  el.style.background = "rgba(219,135,143,.07)";
+                }}
+                onMouseOut={(e: React.MouseEvent<HTMLAnchorElement>) => {
+                  const el = e.currentTarget;
+                  el.style.borderColor = "rgba(241,235,219,.12)";
+                  el.style.color = "rgba(241,235,219,.4)";
+                  el.style.background = "transparent";
+                }}
               >
                 <GearIcon />
               </Link>
@@ -472,47 +491,89 @@ export default function HomePage() {
       <aside className={`h-auth-drawer${authOpen ? " open" : ""}`}>
         <button className="h-auth-close" onClick={closeAuth}>✕</button>
         <div className="h-auth-inner">
-          <div className="h-auth-heading">Bon<em>jour.</em></div>
-          <p className="h-auth-sub">Connecte-toi pour gérer ta sélection</p>
-          <div className="h-auth-tabs">
-            {(["signin", "signup"] as const).map(m => (
-              <button key={m} className={`h-auth-tab${authMode === m ? " active" : ""}`} onClick={() => resetAuth(m)}>
-                {m === "signin" ? "Connexion" : "Inscription"}
+
+          {/* ── Mode reset ── */}
+          {authMode === "reset" ? (<>
+            <div className="h-auth-heading">Mot de<em> passe.</em></div>
+            <p className="h-auth-sub">On t&apos;envoie un lien de réinitialisation</p>
+
+            {resetSent ? (
+              <div className="h-auth-success">
+                📬 Vérifie ta boîte mail — le lien arrive dans quelques secondes.
+              </div>
+            ) : (<>
+              {authError && <div className="h-auth-error">{authError}</div>}
+              <div className="h-auth-field">
+                <label className="h-auth-label">Email</label>
+                <input className="h-auth-input" type="email" placeholder="ton@email.fr"
+                  value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleAuth(); }} />
+              </div>
+              <button className="h-auth-submit" onClick={handleAuth} disabled={resetLoading}>
+                {resetLoading ? "Envoi…" : "Envoyer le lien"}
               </button>
-            ))}
-          </div>
-          {authError && <div className="h-auth-error">{authError}</div>}
-          {authMode === "signup" && (
-            <div className="h-auth-field">
-              <label className="h-auth-label">Pseudo</label>
-              <input className="h-auth-input" type="text" placeholder="3 caractères minimum"
-                value={authName} onChange={e => setAuthName(e.target.value)} />
+            </>)}
+
+            <button className="h-auth-link" onClick={() => resetAuth("signin")}>
+              ← Retour à la connexion
+            </button>
+          </>) : (<>
+
+            {/* ── Modes signin / signup ── */}
+            <div className="h-auth-heading">Bon<em>jour.</em></div>
+            <p className="h-auth-sub">Connecte-toi pour gérer ta sélection</p>
+            <div className="h-auth-tabs">
+              {(["signin", "signup"] as const).map(m => (
+                <button key={m} className={`h-auth-tab${authMode === m ? " active" : ""}`} onClick={() => resetAuth(m)}>
+                  {m === "signin" ? "Connexion" : "Inscription"}
+                </button>
+              ))}
             </div>
-          )}
-          <div className="h-auth-field">
-            <label className="h-auth-label">Email</label>
-            <input className="h-auth-input" type="email" placeholder="ton@email.fr"
-              value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
-          </div>
-          <div className="h-auth-field">
-            <label className="h-auth-label">Mot de passe</label>
-            <input className="h-auth-input" type="password" placeholder="6 caractères minimum"
-              value={authPwd} onChange={e => setAuthPwd(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && authMode === "signin") handleAuth(); }} />
-          </div>
-          {authMode === "signup" && (
-            <div className="h-auth-field">
-              <label className="h-auth-label">Confirmer</label>
-              <input className="h-auth-input" type="password" placeholder="••••••••"
-                value={authConfirm} onChange={e => setAuthConfirm(e.target.value)} />
-            </div>
-          )}
-          <button className="h-auth-submit" onClick={handleAuth} disabled={signupLoading}>
-            {signupLoading ? "Chargement…" : authMode === "signin" ? "Se connecter" : "Créer mon compte"}
-          </button>
-          <p className="h-auth-footer">
-            En jouant, tu acceptes que ce jeu est de mauvais goût et que c&apos;est exactement pour ça qu&apos;il existe.
-          </p>
+            {authError && <div className="h-auth-error">{authError}</div>}
+            {authMode === "signup" && signupConfirm ? (
+              <div className="h-auth-success" style={{ marginTop: 8 }}>
+                📬 Un email de confirmation t&apos;a été envoyé.<br/>
+                Clique sur le lien pour activer ton compte.
+              </div>
+            ) : authMode === "signup" && (
+              <div className="h-auth-field">
+                <label className="h-auth-label">Pseudo</label>
+                <input className="h-auth-input" type="text" placeholder="3 caractères minimum"
+                  value={authName} onChange={e => setAuthName(e.target.value)} />
+              </div>
+            )}
+            {!signupConfirm && <div className="h-auth-field">
+              <label className="h-auth-label">Email</label>
+              <input className="h-auth-input" type="email" placeholder="ton@email.fr"
+                value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+            </div>}
+            {!signupConfirm && <div className="h-auth-field">
+              <label className="h-auth-label">Mot de passe</label>
+              <input className="h-auth-input" type="password" placeholder="6 caractères minimum"
+                value={authPwd} onChange={e => setAuthPwd(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && authMode === "signin") handleAuth(); }} />
+            </div>}
+            {authMode === "signin" && (
+              <div style={{ textAlign: "right", marginTop: -8, marginBottom: 8 }}>
+                <button className="h-auth-link" onClick={() => resetAuth("reset")}>
+                  Mot de passe oublié ?
+                </button>
+              </div>
+            )}
+            {authMode === "signup" && (
+              <div className="h-auth-field">
+                <label className="h-auth-label">Confirmer</label>
+                <input className="h-auth-input" type="password" placeholder="••••••••"
+                  value={authConfirm} onChange={e => setAuthConfirm(e.target.value)} />
+              </div>
+            )}
+            {!signupConfirm && <button className="h-auth-submit" onClick={handleAuth} disabled={signupLoading}>
+              {signupLoading ? "Chargement…" : authMode === "signin" ? "Se connecter" : "Créer mon compte"}
+            </button>}
+            <p className="h-auth-footer">
+              En jouant, tu acceptes que ce jeu est de mauvais goût et que c&apos;est exactement pour ça qu&apos;il existe.
+            </p>
+          </>)}
         </div>
       </aside>
 

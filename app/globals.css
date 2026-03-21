@@ -507,6 +507,18 @@
   border-radius: 8px; padding: 10px 14px; margin-bottom: 16px;
   font-family:'Outfit',sans-serif; font-size: .78rem; color: #fca5a5;
 }
+.h-auth-success {
+  background: rgba(74,222,128,.08); border: 1px solid rgba(74,222,128,.2);
+  border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;
+  font-family:'Outfit',sans-serif; font-size: .82rem; color: #86efac; line-height: 1.5;
+}
+.h-auth-link {
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-family:'Outfit',sans-serif; font-size: .72rem; font-weight: 400;
+  color: rgba(241,235,219,.3); letter-spacing: .5px;
+  transition: color .18s ease; text-decoration: none; display: inline-block; margin-top: 12px;
+}
+.h-auth-link:hover { color: var(--rose); }
 .h-auth-submit {
   margin-top: 8px; width: 100%; padding: 14px;
   font-family: 'Outfit', sans-serif; font-size: .78rem; font-weight: 700;

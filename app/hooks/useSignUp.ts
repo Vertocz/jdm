@@ -11,8 +11,57 @@ interface SignupData {
 }
 
 interface UseSignupResult {
-  signup: (data: SignupData) => Promise<{ success: boolean; error?: string }>;
+  signup: (data: SignupData) => Promise<{ success: boolean; needsConfirmation?: boolean; error?: string }>;
   loading: boolean;
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Tente de mettre à jour le display_name sur le profil créé par le trigger Supabase.
+ * Réessaie jusqu'à `maxAttempts` fois avec `delayMs` entre chaque tentative,
+ * au cas où le trigger serait un peu lent.
+ * En dernier recours, fait un upsert pour ne jamais perdre le pseudo.
+ */
+async function setDisplayNameWithRetry(
+  userId: string,
+  displayName: string,
+  maxAttempts = 5,
+  delayMs = 300
+): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Vérifie si le trigger a déjà créé la ligne
+    const { data: existing } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (existing) {
+      // La ligne existe → update normal
+      const { error } = await supabase
+        .from("profiles")
+        .update({ display_name: displayName })
+        .eq("user_id", userId);
+
+      if (!error) return;
+      console.warn(`Tentative ${attempt} échouée (update):`, error.message);
+    } else if (attempt < maxAttempts) {
+      // Pas encore créé → on attend avant de réessayer
+      console.warn(`Tentative ${attempt} : profil pas encore créé, on attend ${delayMs}ms…`);
+    }
+
+    if (attempt < maxAttempts) await wait(delayMs);
+  }
+
+  // Dernier recours : upsert (crée la ligne si le trigger n'a jamais tourné)
+  const { error } = await supabase
+    .from("profiles")
+    .upsert({ user_id: userId, display_name: displayName }, { onConflict: "user_id" });
+
+  if (error) {
+    console.error("Erreur upsert profil (dernier recours):", error.message);
+  }
 }
 
 export function useSignup(): UseSignupResult {
@@ -23,7 +72,7 @@ export function useSignup(): UseSignupResult {
     password,
     confirmPassword,
     displayName,
-  }: SignupData): Promise<{ success: boolean; error?: string }> => {
+  }: SignupData): Promise<{ success: boolean; needsConfirmation?: boolean; error?: string }> => {
     setLoading(true);
 
     try {
@@ -62,21 +111,12 @@ export function useSignup(): UseSignupResult {
 
       if (!authData.user) return { success: false, error: "Erreur lors de la création du compte" };
 
-      // 6. Mettre à jour le profil avec le pseudo choisi
-      // On attend que le trigger Supabase ait créé le profil
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // 6. Écrire le pseudo avec retry — plus de setTimeout aveugle
+      await setDisplayNameWithRetry(authData.user.id, displayName.trim());
 
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ display_name: displayName.trim() })
-        .eq("user_id", authData.user.id);
-
-      if (profileError) {
-        console.error("Erreur mise à jour profil:", profileError);
-        // Ne bloque pas l'inscription si la mise à jour échoue
-      }
-
-      return { success: true };
+      // Si session est null, Supabase attend une confirmation email
+      const needsConfirmation = !authData.session;
+      return { success: true, needsConfirmation };
     } catch (err: unknown) {
       console.error("Erreur lors de l'inscription:", err);
       return {

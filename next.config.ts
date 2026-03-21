@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  turbopack: {
+    root: __dirname,
+  },
   images: {
     // Next.js proxifie les images externes côté serveur pour les optimiser.
     // Avec des sources comme Wikimedia Commons (many images, concurrent requests),

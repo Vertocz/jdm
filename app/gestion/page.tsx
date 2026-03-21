@@ -39,19 +39,47 @@ export default function GestionPage() {
 
   const handleSave = async () => {
     if (!user) return;
-    setSaving(true); setMessage(null);
+    setMessage(null);
+
+    // Validations avant d'envoyer quoi que ce soit
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      setMessage({ text: "Le pseudo ne peut pas être vide.", ok: false }); return;
+    }
+    if (trimmedName.length < 3) {
+      setMessage({ text: "Le pseudo doit contenir au moins 3 caractères.", ok: false }); return;
+    }
+    if (newPwd) {
+      if (newPwd.length < 6) {
+        setMessage({ text: "Le mot de passe doit contenir au moins 6 caractères.", ok: false }); return;
+      }
+      if (newPwd !== confirmPwd) {
+        setMessage({ text: "Les mots de passe ne correspondent pas.", ok: false }); return;
+      }
+    }
+
+    setSaving(true);
     try {
+      // Vérifier si le pseudo est déjà pris par quelqu'un d'autre
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .ilike("display_name", trimmedName)
+        .neq("user_id", user.id)
+        .maybeSingle();
+
+      if (existing) {
+        setMessage({ text: "Ce pseudo est déjà utilisé.", ok: false });
+        setSaving(false); return;
+      }
+
       const { error: pe } = await supabase
         .from("profiles")
-        .update({ display_name: displayName, alert_mes_candidats: alertMes, alert_autres_candidats: alertAutres })
+        .update({ display_name: trimmedName, alert_mes_candidats: alertMes, alert_autres_candidats: alertAutres })
         .eq("user_id", user.id);
       if (pe) throw pe;
 
       if (newPwd) {
-        if (newPwd !== confirmPwd) {
-          setMessage({ text: "Les mots de passe ne correspondent pas.", ok: false });
-          setSaving(false); return;
-        }
         const { error: we } = await supabase.auth.updateUser({ password: newPwd });
         if (we) throw we;
         setNewPwd(""); setConfirmPwd("");
