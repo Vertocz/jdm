@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/check-deaths",
       "schedule": "59 23 * * *"
+    },
+    {
+      "path": "/api/cron/update-photos",
+      "schedule": "0 3 * * 1"
     }
   ]
 }
