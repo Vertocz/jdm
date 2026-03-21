@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchCandidats } from "@/app/hooks/useSearchCandidats";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseAuth } from "@/app/hooks/useSupabaseAuth";
@@ -395,7 +396,11 @@ export default function HomePage() {
 
       {/* ── FIX 1 : <img> natif au lieu de <Image> → plus d'erreur d'hydratation ── */}
       <nav className={`h-nav${scrolled ? " scrolled" : ""}`}>
-        <Link href="/" className="h-nav-logo" style={{ opacity:1, animation:"none" }}>Le Jeu <em>de la Mort</em></Link>
+        {/* Logo */}
+        <Link href="/" style={{ display: "flex", alignItems: "center", flexShrink: 0, opacity: 1, animation: "none" }}>
+          <Image src="/logo.png" alt="Le Jeu de la Mort" width={52} height={52}
+            style={{ objectFit: "contain" }} priority />
+        </Link>
 
         <div className="h-nav-links">
           <Link href="/"            className="h-nav-link active">Accueil</Link>
