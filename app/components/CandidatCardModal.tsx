@@ -3,7 +3,8 @@
 
 import { User } from "@supabase/supabase-js";
 import { calculAge, pointsPourAge, capitalizeFirst, formatNomCarte, formatFr } from "@/utils/fonctions";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import { useAddCandidat } from "@/app/hooks/useAddCandidat";
 import { CandidatRecherche } from "@/types";
 import Link from "next/link";
@@ -24,6 +25,18 @@ export default function CandidatCardModal({
   const [message, setMessage] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
   const { addCandidat, loading: adding } = useAddCandidat(user?.id);
+
+  // Vérifie si le candidat existe en base pour afficher le serial et le lien fiche
+  const [dbId, setDbId] = useState<number | null>(null);
+  useEffect(() => {
+    if (!candidat.wikidata_id) return;
+    supabase
+      .from("candidats")
+      .select("id")
+      .eq("wikidata_id", candidat.wikidata_id)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setDbId(data.id); });
+  }, [candidat.wikidata_id]);
 
   const ddd    = (candidat as any).ddd ?? null;
   const isDead = !!ddd;
@@ -92,7 +105,7 @@ export default function CandidatCardModal({
               <span className="pc-vname" style={{ fontSize, letterSpacing }}>{display}</span>
             </div>
             <span className="pc-serial">
-              {candidat.wikidata_id?.replace("Q", "#") ?? "—"}
+              {dbId !== null ? `#${String(dbId).padStart(4, "0")}` : ""}
             </span>
 
             {/* Photo */}
@@ -207,26 +220,28 @@ export default function CandidatCardModal({
 
           {/* Actions bas */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <Link
-              href={`/candidat/${candidat.id}`}
-              onClick={onClose}
-              style={{
-                padding: "8px 24px",
-                background: "rgba(241,235,219,.06)",
-                border: "1px solid rgba(241,235,219,.1)",
-                borderRadius: 30,
-                fontFamily: "'Outfit', sans-serif",
-                color: "rgba(241,235,219,.6)",
-                fontSize: ".7rem", fontWeight: 500,
-                letterSpacing: 2, textTransform: "uppercase",
-                cursor: "pointer", transition: "all .2s ease",
-                textDecoration: "none",
-              }}
-              onMouseOver={e => { const el = e.currentTarget; el.style.borderColor = "rgba(241,235,219,.25)"; el.style.color = "var(--cream)"; }}
-              onMouseOut={e  => { const el = e.currentTarget; el.style.borderColor = "rgba(241,235,219,.1)";  el.style.color = "rgba(241,235,219,.6)"; }}
-            >
-              Voir sa fiche
-            </Link>
+            {dbId !== null && (
+              <Link
+                href={`/candidat/${dbId}`}
+                onClick={onClose}
+                style={{
+                  padding: "8px 24px",
+                  background: "rgba(241,235,219,.06)",
+                  border: "1px solid rgba(241,235,219,.1)",
+                  borderRadius: 30,
+                  fontFamily: "'Outfit', sans-serif",
+                  color: "rgba(241,235,219,.6)",
+                  fontSize: ".7rem", fontWeight: 500,
+                  letterSpacing: 2, textTransform: "uppercase",
+                  cursor: "pointer", transition: "all .2s ease",
+                  textDecoration: "none",
+                }}
+                onMouseOver={e => { const el = e.currentTarget; el.style.borderColor = "rgba(241,235,219,.25)"; el.style.color = "var(--cream)"; }}
+                onMouseOut={e  => { const el = e.currentTarget; el.style.borderColor = "rgba(241,235,219,.1)";  el.style.color = "rgba(241,235,219,.6)"; }}
+              >
+                Voir sa fiche
+              </Link>
+            )}
             <button
               onClick={onClose}
               style={{

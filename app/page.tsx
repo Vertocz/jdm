@@ -267,8 +267,8 @@ export default function HomePage() {
     const resize = () => { W = canvas.width = hero.offsetWidth; H = canvas.height = hero.offsetHeight; };
     resize();
     window.addEventListener("resize", resize);
-    const STARS = Array.from({ length: 180 }, (_, i) => {
-      const bright = i < 10;
+    const STARS = Array.from({ length: 300 }, (_, i) => {
+      const bright = i < 30;
       return { x: Math.random(), y: Math.random(), ox: 0, oy: 0,
         r: bright ? Math.random()*.65+.45 : Math.random()*.5+.12,
         base: bright ? Math.random()*.28+.1 : Math.random()*.1+.025,
