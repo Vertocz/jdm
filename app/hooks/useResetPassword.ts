@@ -19,7 +19,7 @@ export function useResetPassword(): UseResetPasswordResult {
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin}/reset-password`,
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin}/gestion`,
       });
 
       if (error) throw error;
