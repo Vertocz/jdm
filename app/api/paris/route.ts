@@ -2,14 +2,82 @@
 //
 // POST /api/paris
 // Crée un pari pour l'utilisateur authentifié.
-// Toute la validation se passe côté serveur — le client ne contrôle jamais
-// le candidat_id directement, seulement le wikidata_id.
+// Le candidat est systématiquement vérifié sur Wikidata côté serveur —
+// le client ne fournit que le wikidata_id, toutes les données viennent de Wikidata.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServerClient';
 import { createClient } from '@supabase/supabase-js';
 
 const MAX_PARIS_PAR_SAISON = 10;
+const WIKIDATA_URL         = 'https://www.wikidata.org/w/api.php';
+const WIKIDATA_TIMEOUT_MS  = 8_000;
+
+// ─── Wikidata ─────────────────────────────────────────────────────────────────
+
+interface WikidataCandidat {
+  nom: string;
+  ddn: string | null;
+  ddd: string | null;
+  photo: string | null;
+  description: string;
+}
+
+async function fetchFromWikidata(wikidataId: string): Promise<WikidataCandidat | null> {
+  const res = await fetch(
+    `${WIKIDATA_URL}?${new URLSearchParams({
+      action:    'wbgetentities',
+      ids:       wikidataId,
+      props:     'claims|labels|descriptions',
+      languages: 'fr|en',
+      format:    'json',
+    })}`,
+    { signal: AbortSignal.timeout(WIKIDATA_TIMEOUT_MS) }
+  );
+
+  if (!res.ok) return null;
+
+  const data   = await res.json();
+  const entity = data.entities?.[wikidataId];
+  if (!entity || entity.missing !== undefined) return null;
+
+  const claims = entity.claims ?? {};
+
+  // Doit avoir une date de naissance (P569) — sinon ce n'est pas une personne
+  if (!('P569' in claims)) return null;
+
+  // Déjà décédé (P570) — on laisse passer pour afficher l'erreur côté client
+  let ddd: string | null = null;
+  try {
+    const t = claims.P570?.[0]?.mainsnak?.datavalue?.value?.time as string | undefined;
+    if (t) {
+      const m = t.match(/\+(\d{4})-(\d{2})-(\d{2})/);
+      if (m) ddd = `${m[1]}-${m[2]}-${m[3]}`;
+    }
+  } catch { /* pas de date de décès */ }
+
+  // Date de naissance
+  let ddn: string | null = null;
+  try {
+    const t = claims.P569[0].mainsnak.datavalue.value.time as string;
+    const m = t.match(/\+(\d{4})-(\d{2})-(\d{2})/);
+    if (m) ddn = `${m[1]}-${m[2]}-${m[3]}`;
+  } catch { /* date malformée */ }
+
+  // Photo (P18)
+  let photo: string | null = null;
+  try {
+    const raw = claims.P18?.[0]?.mainsnak?.datavalue?.value as string | undefined;
+    if (raw) photo = raw.replace(/ /g, '_');
+  } catch { /* pas de photo */ }
+
+  const nom = entity.labels?.fr?.value || entity.labels?.en?.value || wikidataId;
+  const description = entity.descriptions?.fr?.value || entity.descriptions?.en?.value || '';
+
+  return { nom, ddn, ddd, photo, description };
+}
+
+// ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
 
@@ -20,8 +88,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const token = authHeader.slice(7);
-
-  // Client avec le token de l'utilisateur pour valider son identité
   const userClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -58,8 +124,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `Maximum ${MAX_PARIS_PAR_SAISON} candidats actifs par saison` }, { status: 422 });
   }
 
-  // ── 4. Vérifier que le candidat existe en base et est vivant ────────────
-  //    Le client ne fournit que le wikidata_id — on résout le candidat_id côté serveur.
+  // ── 4. Candidat déjà en base ? ───────────────────────────────────────────
   const { data: existingCandidat } = await supabase
     .from('candidats')
     .select('id, ddd')
@@ -70,25 +135,41 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Ce candidat est déjà décédé' }, { status: 422 });
   }
 
-  // ── 5. Upsert du candidat si inconnu ─────────────────────────────────────
-  //    Si le candidat n'existe pas encore en base, on l'insère à partir des
-  //    données fournies par le client — mais on ne fait jamais confiance au
-  //    candidat_id côté client, seulement au wikidata_id.
   let candidatId: number;
 
   if (existingCandidat) {
+    // Candidat connu — on fait confiance aux données déjà en base
     candidatId = existingCandidat.id;
   } else {
-    // Données optionnelles fournies par le client pour pré-remplir le candidat
-    const nom         = typeof body.nom         === 'string' ? body.nom.trim().slice(0, 200)         : wikidataId;
-    const ddn         = typeof body.ddn         === 'string' ? body.ddn                              : null;
-    const description = typeof body.description === 'string' ? body.description.trim().slice(0, 500) : '';
-    const photo       = typeof body.photo       === 'string' ? body.photo.trim().slice(0, 500)       : '';
+    // ── 5. Candidat inconnu — vérification sur Wikidata ──────────────────
+    //    On ne fait JAMAIS confiance aux données du client.
+    let wikidataData: WikidataCandidat | null;
+    try {
+      wikidataData = await fetchFromWikidata(wikidataId);
+    } catch {
+      return NextResponse.json({ error: 'Impossible de vérifier le candidat sur Wikidata' }, { status: 503 });
+    }
 
+    if (!wikidataData) {
+      return NextResponse.json({ error: 'Candidat introuvable sur Wikidata' }, { status: 422 });
+    }
+
+    if (wikidataData.ddd) {
+      return NextResponse.json({ error: 'Ce candidat est déjà décédé' }, { status: 422 });
+    }
+
+    // Tout vient de Wikidata — rien du client
     const { data: inserted, error: insertError } = await supabase
       .from('candidats')
       .upsert(
-        { nom, ddn, ddd: null, description, photo, wikidata_id: wikidataId },
+        {
+          nom:         wikidataData.nom,
+          ddn:         wikidataData.ddn,
+          ddd:         null,
+          description: wikidataData.description,
+          photo:       wikidataData.photo ?? '',
+          wikidata_id: wikidataId,
+        },
         { onConflict: 'wikidata_id', ignoreDuplicates: true }
       )
       .select('id')
@@ -99,7 +180,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (inserted) {
       candidatId = inserted.id;
     } else {
-      // Race condition : un autre requête a inséré entre-temps
+      // Race condition
       const { data: refetch } = await supabase
         .from('candidats').select('id').eq('wikidata_id', wikidataId).single();
       if (!refetch) return NextResponse.json({ error: 'Candidat introuvable' }, { status: 500 });
