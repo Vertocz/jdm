@@ -10,44 +10,67 @@ interface CandidatRecherche {
   wikidata_id: string;
 }
 
+export type SearchError = 'rate_limit' | 'timeout' | 'server_error' | null;
+
 export function useSearchCandidats(query: string, minLength = 2, debounceMs = 400) {
   const [suggestions, setSuggestions] = useState<CandidatRecherche[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  // Ref vers le contrôleur d'annulation de la requête en cours
+  const [searchError, setSearchError] = useState<SearchError>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (query.trim().length < minLength) {
       setSuggestions([]);
       setShowSuggestions(false);
+      setSearchError(null);
       return;
     }
 
     const timer = setTimeout(async () => {
-      // Annuler la requête précédente si elle est toujours en vol
       abortControllerRef.current?.abort();
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
       setLoading(true);
+      setSearchError(null);
       try {
         const response = await fetch(
           `/api/recherche?q=${encodeURIComponent(query.trim())}`,
           { signal: controller.signal }
         );
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
         const data = await response.json();
+
+        if (response.status === 429 || data.error === 'rate_limit') {
+          setSearchError('rate_limit');
+          setSuggestions([]);
+          setShowSuggestions(true);
+          return;
+        }
+
+        if (response.status === 504 || data.error === 'timeout') {
+          setSearchError('timeout');
+          setSuggestions([]);
+          setShowSuggestions(true);
+          return;
+        }
+
+        if (!response.ok) {
+          setSearchError('server_error');
+          setSuggestions([]);
+          setShowSuggestions(true);
+          return;
+        }
+
         setSuggestions(data.candidats ?? []);
         setShowSuggestions(true);
       } catch (err: unknown) {
-        // AbortError = requête annulée volontairement, on ne met pas à jour l'état
         if (err instanceof Error && err.name === 'AbortError') return;
         console.error('Erreur recherche:', err);
+        setSearchError('server_error');
         setSuggestions([]);
-        setShowSuggestions(false);
+        setShowSuggestions(true);
       } finally {
         setLoading(false);
       }
@@ -55,10 +78,9 @@ export function useSearchCandidats(query: string, minLength = 2, debounceMs = 40
 
     return () => {
       clearTimeout(timer);
-      // Annuler aussi si la query change avant la fin du debounce
       abortControllerRef.current?.abort();
     };
   }, [query, minLength, debounceMs]);
 
-  return { suggestions, loading, showSuggestions, setShowSuggestions };
+  return { suggestions, loading, showSuggestions, setShowSuggestions, searchError };
 }

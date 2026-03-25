@@ -5,9 +5,8 @@ import { CandidatRecherche } from "@/types";
 const WIKIDATA_URL = "https://www.wikidata.org/w/api.php";
 const FETCH_TIMEOUT_MS = 8000;
 
-// IDENTIFICATION POUR WIKIDATA (Crucial pour éviter l'erreur 429)
+// IDENTIFICATION POUR WIKIDATA (obligatoire pour éviter les erreurs 429)
 const WIKIDATA_HEADERS = {
-  // Remplace 'ton-email@example.com' par ton adresse réelle
   'User-Agent': 'LeJeuDeLaMort/1.0 (contact: victor_creze@hotmail.com) NextJS-App',
   'Accept': 'application/json'
 };
@@ -30,15 +29,14 @@ export async function GET(request: NextRequest) {
         search: query,
         limit: "10",
       })}`,
-      { 
+      {
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        headers: WIKIDATA_HEADERS 
+        headers: WIKIDATA_HEADERS
       }
     );
 
-    // Check spécifique pour le rate-limit
     if (searchRes.status === 429) {
-      throw new Error("Wikidata HTTP 429: Too Many Requests (Rate Limited)");
+      return NextResponse.json({ error: "rate_limit" }, { status: 429 });
     }
 
     if (!searchRes.ok) throw new Error(`Wikidata search HTTP ${searchRes.status}`);
@@ -59,14 +57,14 @@ export async function GET(request: NextRequest) {
         languages: "fr|en",
         format: "json",
       })}`,
-      { 
+      {
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        headers: WIKIDATA_HEADERS 
+        headers: WIKIDATA_HEADERS
       }
     );
 
     if (entitiesRes.status === 429) {
-      throw new Error("Wikidata HTTP 429: Too Many Requests (Rate Limited)");
+      return NextResponse.json({ error: "rate_limit" }, { status: 429 });
     }
 
     if (!entitiesRes.ok) throw new Error(`Wikidata entities HTTP ${entitiesRes.status}`);
@@ -123,18 +121,12 @@ export async function GET(request: NextRequest) {
   } catch (err: unknown) {
     const isTimeout =
       err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
-    
-    const isRateLimit = err instanceof Error && err.message.includes("429");
 
     console.error("Erreur recherche Wikidata:", err);
-    
+
     return NextResponse.json(
-      { 
-        error: isRateLimit 
-          ? "Service temporairement indisponible (Wikidata Rate Limit)" 
-          : (isTimeout ? "Délai dépassé" : "Erreur lors de la recherche") 
-      },
-      { status: isRateLimit ? 429 : (isTimeout ? 504 : 500) }
+      { error: isTimeout ? "timeout" : "server_error" },
+      { status: isTimeout ? 504 : 500 }
     );
   }
 }

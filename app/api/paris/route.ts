@@ -13,6 +13,12 @@ const MAX_PARIS_PAR_SAISON = 10;
 const WIKIDATA_URL         = 'https://www.wikidata.org/w/api.php';
 const WIKIDATA_TIMEOUT_MS  = 8_000;
 
+// IDENTIFICATION POUR WIKIDATA (obligatoire pour éviter les erreurs 429)
+const WIKIDATA_HEADERS = {
+  'User-Agent': 'LeJeuDeLaMort/1.0 (contact: victor_creze@hotmail.com) NextJS-App',
+  'Accept': 'application/json',
+};
+
 // ─── Wikidata ─────────────────────────────────────────────────────────────────
 
 interface WikidataCandidat {
@@ -32,9 +38,10 @@ async function fetchFromWikidata(wikidataId: string): Promise<WikidataCandidat |
       languages: 'fr|en',
       format:    'json',
     })}`,
-    { signal: AbortSignal.timeout(WIKIDATA_TIMEOUT_MS) }
+    { signal: AbortSignal.timeout(WIKIDATA_TIMEOUT_MS), headers: WIKIDATA_HEADERS }
   );
 
+  if (res.status === 429) throw new Error('Wikidata HTTP 429: Too Many Requests');
   if (!res.ok) return null;
 
   const data   = await res.json();
@@ -146,8 +153,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     let wikidataData: WikidataCandidat | null;
     try {
       wikidataData = await fetchFromWikidata(wikidataId);
-    } catch {
-      return NextResponse.json({ error: 'Impossible de vérifier le candidat sur Wikidata' }, { status: 503 });
+    } catch (err) {
+      const isRateLimit = (err as Error)?.message?.includes('429');
+      return NextResponse.json(
+        { error: isRateLimit
+            ? 'Wikidata est temporairement indisponible. Réessaie dans quelques instants.'
+            : 'Impossible de vérifier le candidat sur Wikidata'
+        },
+        { status: isRateLimit ? 429 : 503 }
+      );
     }
 
     if (!wikidataData) {

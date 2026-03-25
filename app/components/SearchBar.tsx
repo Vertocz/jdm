@@ -16,7 +16,7 @@ interface SearchBarProps {
 
 export default function SearchBar({ query, onQueryChange, onSelect, placeholder = "Rechercher une personnalité…" }: SearchBarProps) {
   const searchRef = useRef<HTMLDivElement>(null);
-  const { suggestions, loading, showSuggestions, setShowSuggestions } = useSearchCandidats(query);
+  const { suggestions, loading, showSuggestions, setShowSuggestions, searchError } = useSearchCandidats(query);
 
   useClickOutside(searchRef, () => setShowSuggestions(false));
 
@@ -26,6 +26,24 @@ export default function SearchBar({ query, onQueryChange, onSelect, placeholder 
     onQueryChange("");
   };
 
+  const errorMessages: Record<string, { icon: string; title: string; subtitle: string }> = {
+    rate_limit: {
+      icon: "⏳",
+      title: "Wikidata est temporairement indisponible",
+      subtitle: "Trop de requêtes en ce moment. Réessaie dans quelques instants.",
+    },
+    timeout: {
+      icon: "📡",
+      title: "La recherche a pris trop de temps",
+      subtitle: "Wikidata ne répond pas. Vérifie ta connexion et réessaie.",
+    },
+    server_error: {
+      icon: "⚠️",
+      title: "Une erreur est survenue",
+      subtitle: "La recherche est momentanément indisponible. Réessaie dans un instant.",
+    },
+  };
+
   return (
     <div ref={searchRef} className="relative">
       <div className="relative">
@@ -33,7 +51,7 @@ export default function SearchBar({ query, onQueryChange, onSelect, placeholder 
           type="text"
           value={query}
           onChange={e => onQueryChange(e.target.value)}
-          onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+          onFocus={() => { if (suggestions.length > 0 || searchError) setShowSuggestions(true); }}
           onKeyDown={e => { if (e.key === "Enter" && suggestions.length > 0) handleSelect(suggestions[0]); }}
           placeholder={placeholder}
           className="w-full px-5 py-4 bg-[#F1EBDB]/[0.05] border border-[#F1EBDB]/15 rounded-2xl text-[#F1EBDB] text-[0.95rem] font-['Outfit'] outline-none focus:border-[#db878f]/50 focus:bg-[#F1EBDB]/[0.07] focus:shadow-[0_0_0_3px_rgba(219,135,143,.07)] placeholder:text-[#F1EBDB]/28 transition-all"
@@ -44,8 +62,23 @@ export default function SearchBar({ query, onQueryChange, onSelect, placeholder 
         }
       </div>
 
+      {/* Message d'erreur (rate limit, timeout, erreur serveur) */}
+      {showSuggestions && searchError && errorMessages[searchError] && (
+        <div className="absolute top-[calc(100%+8px)] left-0 right-0 bg-[#0f0d1e]/97 border border-[#db878f]/25 rounded-[18px] px-5 py-5 z-[100]">
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <span style={{ fontSize: "1.4rem", lineHeight: 1 }}>{errorMessages[searchError].icon}</span>
+            <p className="text-[#F1EBDB]/75 text-[0.78rem] font-semibold font-['Outfit'] mt-0.5">
+              {errorMessages[searchError].title}
+            </p>
+            <p className="text-[#F1EBDB]/35 text-[0.68rem] font-['Outfit']">
+              {errorMessages[searchError].subtitle}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Suggestions */}
-      {showSuggestions && suggestions.length > 0 && (
+      {showSuggestions && !searchError && suggestions.length > 0 && (
         <div className="absolute top-[calc(100%+8px)] left-0 right-0 bg-[#0f0d1e]/97 border border-[#db878f]/20 rounded-[18px] overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,.65)] z-[100] max-h-[400px] overflow-y-auto">
           {suggestions.map(c => {
             const age = calculAge(c.ddn, null);
@@ -81,7 +114,7 @@ export default function SearchBar({ query, onQueryChange, onSelect, placeholder 
       )}
 
       {/* Aucun résultat */}
-      {showSuggestions && query.length >= 2 && suggestions.length === 0 && !loading && (
+      {showSuggestions && !searchError && query.length >= 2 && suggestions.length === 0 && !loading && (
         <div className="absolute top-[calc(100%+8px)] left-0 right-0 bg-[#0f0d1e]/97 border border-[#F1EBDB]/[0.08] rounded-[18px] px-5 py-5 text-[#F1EBDB]/28 text-center text-[0.76rem] tracking-wider z-[100]">
           Aucune personnalité vivante trouvée
         </div>
