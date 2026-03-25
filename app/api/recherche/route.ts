@@ -5,6 +5,13 @@ import { CandidatRecherche } from "@/types";
 const WIKIDATA_URL = "https://www.wikidata.org/w/api.php";
 const FETCH_TIMEOUT_MS = 8000;
 
+// IDENTIFICATION POUR WIKIDATA (Crucial pour éviter l'erreur 429)
+const WIKIDATA_HEADERS = {
+  // Remplace 'ton-email@example.com' par ton adresse réelle
+  'User-Agent': 'LeJeuDeLaMort/1.0 (contact: victor_creze@hotmail.com) NextJS-App',
+  'Accept': 'application/json'
+};
+
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim();
 
@@ -23,9 +30,16 @@ export async function GET(request: NextRequest) {
         search: query,
         limit: "10",
       })}`,
-      // AbortSignal.timeout() est disponible nativement depuis Node 18
-      { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
+      { 
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        headers: WIKIDATA_HEADERS 
+      }
     );
+
+    // Check spécifique pour le rate-limit
+    if (searchRes.status === 429) {
+      throw new Error("Wikidata HTTP 429: Too Many Requests (Rate Limited)");
+    }
 
     if (!searchRes.ok) throw new Error(`Wikidata search HTTP ${searchRes.status}`);
     const searchData = await searchRes.json();
@@ -45,8 +59,15 @@ export async function GET(request: NextRequest) {
         languages: "fr|en",
         format: "json",
       })}`,
-      { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
+      { 
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        headers: WIKIDATA_HEADERS 
+      }
     );
+
+    if (entitiesRes.status === 429) {
+      throw new Error("Wikidata HTTP 429: Too Many Requests (Rate Limited)");
+    }
 
     if (!entitiesRes.ok) throw new Error(`Wikidata entities HTTP ${entitiesRes.status}`);
     const entitiesData = await entitiesRes.json();
@@ -71,7 +92,7 @@ export async function GET(request: NextRequest) {
         const match = dateStr.match(/\+(\d{4})-(\d{2})-(\d{2})/);
         if (match) ddn = `${match[1]}-${match[2]}-${match[3]}`;
       } catch {
-        // date malformée ou absente — on garde ddn vide
+        // date malformée ou absente
       }
 
       // Photo (P18)
@@ -102,10 +123,18 @@ export async function GET(request: NextRequest) {
   } catch (err: unknown) {
     const isTimeout =
       err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+    
+    const isRateLimit = err instanceof Error && err.message.includes("429");
+
     console.error("Erreur recherche Wikidata:", err);
+    
     return NextResponse.json(
-      { error: isTimeout ? "Délai dépassé" : "Erreur lors de la recherche" },
-      { status: isTimeout ? 504 : 500 }
+      { 
+        error: isRateLimit 
+          ? "Service temporairement indisponible (Wikidata Rate Limit)" 
+          : (isTimeout ? "Délai dépassé" : "Erreur lors de la recherche") 
+      },
+      { status: isRateLimit ? 429 : (isTimeout ? 504 : 500) }
     );
   }
 }
