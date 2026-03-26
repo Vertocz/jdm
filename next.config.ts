@@ -1,4 +1,16 @@
+// next.config.ts
 import type { NextConfig } from "next";
+import withPWA from "next-pwa";
+
+const pwaConfig = withPWA({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
+  register: true,
+  skipWaiting: true,
+  // Ne pas mettre en cache les routes API et les appels Supabase
+  runtimeCaching: [],
+  buildExcludes: [/middleware-manifest\.json$/],
+});
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -6,10 +18,6 @@ const nextConfig: NextConfig = {
     root: __dirname,
   },
   images: {
-    // Next.js proxifie les images externes côté serveur pour les optimiser.
-    // Avec des sources comme Wikimedia Commons (many images, concurrent requests),
-    // cela génère des 429. On désactive l'optimizer : le navigateur charge
-    // directement depuis la source, sans passer par le serveur Next.
     unoptimized: true,
     remotePatterns: [
       {
@@ -28,4 +36,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default pwaConfig(nextConfig);
