@@ -276,9 +276,15 @@ export default function Classement() {
         }}>
           Saison {year}
         </p>
-        <div className="year-pills">
+        <div style={{
+          display: "flex", flexWrap: "wrap", gap: 8,
+          justifyContent: "center", marginBottom: 32,
+          overflowX: "auto", WebkitOverflowScrolling: "touch" as const,
+          scrollbarWidth: "none" as const, padding: "0 4px",
+        }}>
           {years.map(y => (
             <button key={y} className={`year-pill${y === year ? " active" : ""}`}
+              style={{ flexShrink: 0 }}
               onClick={() => setYear(y)}>{y}
             </button>
           ))}
