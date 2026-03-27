@@ -10,7 +10,8 @@ import { pointsPourAge, calculAge } from "@/utils/fonctions";
 export default function JoueurPage() {
   const { id: userId } = useParams() as { id: string };
   const [profile,  setProfile]  = useState<any>(null);
-  const [victoires, setVictoires] = useState<number>(0);
+  const [victoires,        setVictoires]        = useState<number>(0);
+  const [victoiresSaisons, setVictoiresSaisons] = useState<Set<number>>(new Set());
   const [paris,    setParis]    = useState<any[]>([]);
   const [year,     setYear]     = useState<number>(new Date().getFullYear());
   const [years,    setYears]    = useState<number[]>([]);
@@ -34,15 +35,33 @@ export default function JoueurPage() {
       if (!prof) { setLoading(false); return; }
       setProfile(prof);
 
-      // Victoires au classement général (saisons terminées uniquement)
       const currentYear = new Date().getFullYear();
-      const { count } = await supabase
-        .from("victoires")
-        .select("*", { count: "exact", head: true })
-        .eq("joueur_id", userId)
-        .eq("rang", 1)
+
+      // On charge TOUS les paris (tous joueurs) pour les saisons passées,
+      // afin de recalculer dynamiquement qui a remporté le classement général.
+      const { data: tousParis } = await supabase
+        .from("paris")
+        .select("id, joueur, saison, candidats ( id, nom, ddn, ddd )")
         .lt("saison", currentYear);
-      setVictoires(count ?? 0);
+
+      // Calcul du classement par saison passée
+      let nbVictoires = 0;
+      const saisonsGagnees = new Set<number>();
+      const saisonsPasses = [...new Set((tousParis ?? []).map((p: any) => p.saison as number))];
+      for (const saison of saisonsPasses) {
+        const parisDuSaison = (tousParis ?? []).filter((p: any) => p.saison === saison);
+        const scores: Record<string, number> = {};
+        parisDuSaison.forEach((p: any) => {
+          const c = p.candidats;
+          if (!c?.ddd || new Date(c.ddd).getFullYear() !== saison) return;
+          const age = calculAge(c.ddn, c.ddd) ?? 0;
+          scores[p.joueur] = (scores[p.joueur] ?? 0) + pointsPourAge(age);
+        });
+        const vainqueur = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+        if (vainqueur && vainqueur[0] === userId) { nbVictoires++; saisonsGagnees.add(saison); }
+      }
+      setVictoires(nbVictoires);
+      setVictoiresSaisons(saisonsGagnees);
 
       const { data } = await supabase
         .from("paris")
@@ -123,16 +142,28 @@ export default function JoueurPage() {
 
         {/* Sélecteur d'années */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 32, padding: "0 16px" }}>
-          {years.map(y => (
-            <button key={y} onClick={() => setYear(y)} style={{
-              padding: "7px 18px", borderRadius: 30, cursor: "pointer", flexShrink: 0,
-              fontFamily: "'Outfit',sans-serif", fontSize: ".7rem", fontWeight: 500, letterSpacing: "1.5px", textTransform: "uppercase",
-              border: y === year ? "1px solid rgba(219,135,143,.7)" : "1px solid rgba(241,235,219,.15)",
-              background: y === year ? "rgba(219,135,143,.15)" : "transparent",
-              color: y === year ? "var(--rose)" : "rgba(241,235,219,.4)",
-              transition: "all .22s ease",
-            }}>{y}</button>
-          ))}
+          {years.map(y => {
+            const isWon    = victoiresSaisons.has(y);
+            const isActive = y === year;
+            return (
+              <button key={y} onClick={() => setYear(y)} style={{
+                padding: "7px 18px", borderRadius: 30, cursor: "pointer", flexShrink: 0,
+                fontFamily: "'Outfit',sans-serif", fontSize: ".7rem",
+                fontWeight: isWon ? 700 : 500,
+                letterSpacing: "1.5px", textTransform: "uppercase",
+                border: isActive
+                  ? `1px solid ${isWon ? "rgba(200,175,90,.8)" : "rgba(219,135,143,.7)"}`
+                  : `1px solid ${isWon ? "rgba(200,175,90,.35)" : "rgba(241,235,219,.15)"}`,
+                background: isActive
+                  ? (isWon ? "rgba(200,175,90,.15)" : "rgba(219,135,143,.15)")
+                  : (isWon ? "rgba(200,175,90,.07)" : "transparent"),
+                color: isWon
+                  ? "rgba(200,175,90,.9)"
+                  : (isActive ? "var(--rose)" : "rgba(241,235,219,.4)"),
+                transition: "all .22s ease",
+              }}>{y}</button>
+            );
+          })}
         </div>
       </div>
 

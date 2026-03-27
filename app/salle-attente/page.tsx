@@ -320,6 +320,7 @@ export default function SalleAttente() {
   const { user, loading: authLoading } = useSupabaseAuth();
   const [profile,              setProfile]              = useState<{ display_name: string } | null>(null);
   const [victoiresClassement,  setVictoiresClassement]  = useState<number>(0);
+  const [victoiresSaisons,     setVictoiresSaisons]     = useState<Set<number>>(new Set());
   const [paris,                setParis]                = useState<Pari[]>([]);
   const [selectedYear,  setSelectedYear]  = useState<number>(new Date().getFullYear());
   const [years,         setYears]         = useState<number[]>([]);
@@ -357,15 +358,17 @@ export default function SalleAttente() {
       const { data: prof } = await supabase.from("profiles").select("display_name").eq("user_id", userId).maybeSingle();
       setProfile(prof);
 
-      // Nombre de victoires au classement général (saisons terminées uniquement)
+      // Victoires au classement général (saisons terminées uniquement)
       const currentYear = new Date().getFullYear();
-      const { count } = await supabase
+      const { data: victoiresData } = await supabase
         .from("victoires")
-        .select("*", { count: "exact", head: true })
+        .select("saison")
         .eq("joueur_id", userId)
         .eq("rang", 1)
         .lt("saison", currentYear);
-      setVictoiresClassement(count ?? 0);
+      const saisons = (victoiresData ?? []).map((v: any) => v.saison as number);
+      setVictoiresClassement(saisons.length);
+      setVictoiresSaisons(new Set(saisons));
 
       await loadParis(userId);
     } catch { setError("Impossible de charger ta salle d'attente."); }
@@ -456,16 +459,28 @@ export default function SalleAttente() {
         )}
 
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center", marginBottom:32, padding:"0 16px" }}>
-          {years.map(y => (
-            <button key={y} onClick={() => setSelectedYear(y)} style={{
-              padding:"7px 18px", borderRadius:30, cursor:"pointer", flexShrink:0,
-              fontFamily:"'Outfit',sans-serif", fontSize:".7rem", fontWeight:500, letterSpacing:"1.5px", textTransform:"uppercase",
-              border: y===selectedYear ? "1px solid rgba(219,135,143,.7)" : "1px solid rgba(241,235,219,.15)",
-              background: y===selectedYear ? "rgba(219,135,143,.15)" : "transparent",
-              color: y===selectedYear ? "var(--rose)" : "rgba(241,235,219,.4)",
-              transition:"all .22s ease",
-            }}>{y}</button>
-          ))}
+          {years.map(y => {
+            const isWon    = victoiresSaisons.has(y);
+            const isActive = y === selectedYear;
+            return (
+              <button key={y} onClick={() => setSelectedYear(y)} style={{
+                padding: "7px 18px", borderRadius: 30, cursor: "pointer", flexShrink: 0,
+                fontFamily: "'Outfit',sans-serif", fontSize: ".7rem",
+                fontWeight: isWon ? 700 : 500,
+                letterSpacing: "1.5px", textTransform: "uppercase",
+                border: isActive
+                  ? `1px solid ${isWon ? "rgba(200,175,90,.8)" : "rgba(219,135,143,.7)"}`
+                  : `1px solid ${isWon ? "rgba(200,175,90,.35)" : "rgba(241,235,219,.15)"}`,
+                background: isActive
+                  ? (isWon ? "rgba(200,175,90,.15)" : "rgba(219,135,143,.15)")
+                  : (isWon ? "rgba(200,175,90,.07)" : "transparent"),
+                color: isWon
+                  ? "rgba(200,175,90,.9)"
+                  : (isActive ? "var(--rose)" : "rgba(241,235,219,.4)"),
+                transition: "all .22s ease",
+              }}>{y}</button>
+            );
+          })}
         </div>
       </div>
 

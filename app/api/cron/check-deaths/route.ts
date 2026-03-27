@@ -73,10 +73,16 @@ function calculAge(ddn: string | null, ddd: string | null): number | null {
   if (m < 0 || (m === 0 && ref.getDate() < birth.getDate())) age--;
   return age;
 }
+// Doit rester identique à utils/fonctions.ts → scores[]
 function pointsPourAge(age: number | null): number {
   if (age === null) return 0;
-  if (age < 60) return 20; if (age < 70) return 15; if (age < 80) return 10; if (age < 90) return 5;
-  return 2;
+  if (age < 55) return 10;
+  if (age < 65) return 9;
+  if (age < 75) return 8;
+  if (age < 80) return 7;
+  if (age < 85) return 5;
+  if (age < 90) return 3;
+  return 1;
 }
 function formatNomCarte(nom: string): { display: string; fontSize: string; letterSpacing: string } {
   const len = nom.length;
