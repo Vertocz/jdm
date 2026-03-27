@@ -5,21 +5,22 @@ import withPWA from "@ducanh2912/next-pwa";
 const pwaConfig = withPWA({
   dest: "public",
   disable: process.env.NODE_ENV === "development",
-  // Ici, on ne met que les options propres au plugin
-  
+
   workboxOptions: {
-    // TOUTES les options de comportement du Service Worker vont ici
     skipWaiting: true,
-    runtimeCaching: [], // Vide si tu veux vraiment gérer le cache à la main
-    
-    // ATTENTION : 'buildExcludes' de l'ancien next-pwa 
-    // s'appelle simplement 'exclude' dans les options Workbox officielles
+    runtimeCaching: [],
     exclude: [/middleware-manifest\.json$/],
   },
 });
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+
+  // ✅ Fix : indique explicitement à Next.js 16 que Turbopack est voulu,
+  // et qu'il n'y a pas de config Turbopack personnalisée (la config webpack
+  // vient du plugin PWA et peut être ignorée par Turbopack sans erreur).
+  turbopack: {},
+
   images: {
     unoptimized: true,
     remotePatterns: [
