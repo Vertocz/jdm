@@ -318,8 +318,9 @@ function SearchOverlay({
 /* ══ PAGE PRINCIPALE ═════════════════════════════════════════════════════ */
 export default function SalleAttente() {
   const { user, loading: authLoading } = useSupabaseAuth();
-  const [profile,       setProfile]       = useState<{ display_name: string } | null>(null);
-  const [paris,         setParis]         = useState<Pari[]>([]);
+  const [profile,              setProfile]              = useState<{ display_name: string } | null>(null);
+  const [victoiresClassement,  setVictoiresClassement]  = useState<number>(0);
+  const [paris,                setParis]                = useState<Pari[]>([]);
   const [selectedYear,  setSelectedYear]  = useState<number>(new Date().getFullYear());
   const [years,         setYears]         = useState<number[]>([]);
   const [loading,       setLoading]       = useState(true);
@@ -355,6 +356,17 @@ export default function SalleAttente() {
     try {
       const { data: prof } = await supabase.from("profiles").select("display_name").eq("user_id", userId).maybeSingle();
       setProfile(prof);
+
+      // Nombre de victoires au classement général (saisons terminées uniquement)
+      const currentYear = new Date().getFullYear();
+      const { count } = await supabase
+        .from("victoires")
+        .select("*", { count: "exact", head: true })
+        .eq("joueur_id", userId)
+        .eq("rang", 1)
+        .lt("saison", currentYear);
+      setVictoiresClassement(count ?? 0);
+
       await loadParis(userId);
     } catch { setError("Impossible de charger ta salle d'attente."); }
     finally { setLoading(false); }
@@ -417,14 +429,30 @@ export default function SalleAttente() {
           Ma salle d&apos;attente
         </h1>
         {profile && (
-          <p style={{
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: ".65rem", fontWeight: 300,
-            letterSpacing: "5px", textTransform: "uppercase",
-            color: "rgba(219,135,143,.5)", marginBottom: 28,
-          }}>
-            {profile.display_name}
-          </p>
+          <div style={{ marginBottom: 28 }}>
+            <p style={{
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: ".65rem", fontWeight: 300,
+              letterSpacing: "5px", textTransform: "uppercase",
+              color: "rgba(219,135,143,.5)", marginBottom: victoiresClassement > 0 ? 8 : 0,
+            }}>
+              {profile.display_name}
+            </p>
+            {victoiresClassement > 0 && (
+              <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
+                {Array.from({ length: victoiresClassement }).map((_, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={i}
+                    src="/etoile.png"
+                    alt="victoire"
+                    title={`${victoiresClassement} victoire${victoiresClassement > 1 ? "s" : ""} au classement général`}
+                    style={{ width: 14, height: 14, objectFit: "contain", opacity: 0.85 }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center", marginBottom:32, padding:"0 16px" }}>

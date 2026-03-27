@@ -10,6 +10,7 @@ import { pointsPourAge, calculAge } from "@/utils/fonctions";
 export default function JoueurPage() {
   const { id: userId } = useParams() as { id: string };
   const [profile,  setProfile]  = useState<any>(null);
+  const [victoires, setVictoires] = useState<number>(0);
   const [paris,    setParis]    = useState<any[]>([]);
   const [year,     setYear]     = useState<number>(new Date().getFullYear());
   const [years,    setYears]    = useState<number[]>([]);
@@ -32,6 +33,16 @@ export default function JoueurPage() {
         .eq("user_id", userId).maybeSingle();
       if (!prof) { setLoading(false); return; }
       setProfile(prof);
+
+      // Victoires au classement général (saisons terminées uniquement)
+      const currentYear = new Date().getFullYear();
+      const { count } = await supabase
+        .from("victoires")
+        .select("*", { count: "exact", head: true })
+        .eq("joueur_id", userId)
+        .eq("rang", 1)
+        .lt("saison", currentYear);
+      setVictoires(count ?? 0);
 
       const { data } = await supabase
         .from("paris")
@@ -87,6 +98,20 @@ export default function JoueurPage() {
         }}>
           {profile.display_name}
         </h1>
+        {victoires > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 6 }}>
+            {Array.from({ length: victoires }).map((_, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src="/etoile.png"
+                alt="victoire"
+                title={`${victoires} victoire${victoires > 1 ? "s" : ""} au classement général`}
+                style={{ width: 14, height: 14, objectFit: "contain", opacity: 0.85 }}
+              />
+            ))}
+          </div>
+        )}
         <p style={{
           fontFamily: "'Outfit', sans-serif",
           fontSize: ".65rem", fontWeight: 300,

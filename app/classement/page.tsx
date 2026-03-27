@@ -23,6 +23,7 @@ interface Score {
   display_name: string;
   totalPoints: number;
   parisGagnants: number;
+  moyenneAge: number;
   candidatsGagnants: CandidatGagnant[];
 }
 
@@ -176,15 +177,17 @@ export default function Classement() {
         const classements: Record<number, Score[]> = {};
 
         listYears.forEach(annee => {
-          const sm: Record<string, { points: number; wins: number; candidats: CandidatGagnant[] }> = {};
+          const sm: Record<string, { points: number; wins: number; totalAge: number; candidats: CandidatGagnant[] }> = {};
 
           byYear[annee].forEach((p: any) => {
             const c = p.candidats;
             if (!c?.ddd || new Date(c.ddd).getFullYear() !== annee) return;
-            const pts = pointsPourAge(calculAge(c.ddn, c.ddd));
-            if (!sm[p.joueur]) sm[p.joueur] = { points: 0, wins: 0, candidats: [] };
-            sm[p.joueur].points += pts;
-            sm[p.joueur].wins   += 1;
+            const age = calculAge(c.ddn, c.ddd) ?? 0;
+            const pts = pointsPourAge(age);
+            if (!sm[p.joueur]) sm[p.joueur] = { points: 0, wins: 0, totalAge: 0, candidats: [] };
+            sm[p.joueur].points   += pts;
+            sm[p.joueur].wins     += 1;
+            sm[p.joueur].totalAge += age;
             sm[p.joueur].candidats.push({
               id: c.id, nom: c.nom, ddn: c.ddn, ddd: c.ddd,
               photo: c.photo, wikidata_id: c.wikidata_id, description: c.description,
@@ -195,20 +198,23 @@ export default function Classement() {
           classements[annee] = profiles
             .filter(p => jo.has(p.user_id))
             .map(p => {
-              const s = sm[p.user_id] || { points: 0, wins: 0, candidats: [] };
+              const s = sm[p.user_id] || { points: 0, wins: 0, totalAge: 0, candidats: [] };
+              const moyenneAge = s.wins > 0 ? s.totalAge / s.wins : 0;
               return {
                 user_id: p.user_id,
                 display_name: p.display_name || "Joueur inconnu",
                 totalPoints: s.points,
                 parisGagnants: s.wins,
+                moyenneAge,
                 candidatsGagnants: s.candidats,
               };
             })
-            .sort((a, b) =>
-              b.totalPoints !== a.totalPoints
-                ? b.totalPoints - a.totalPoints
-                : b.parisGagnants - a.parisGagnants
-            );
+            .sort((a, b) => {
+              if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+              if (b.parisGagnants !== a.parisGagnants) return b.parisGagnants - a.parisGagnants;
+              // Départage 3 : moyenne d'âge la plus basse (pari plus risqué)
+              return a.moyenneAge - b.moyenneAge;
+            });
         });
 
         setCl(classements); setYears(listYears); setYear(listYears[0] ?? null);

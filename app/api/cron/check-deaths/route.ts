@@ -18,7 +18,7 @@ interface CandidatVivant {
   wikidata_id: string; photo: string | null;
 }
 interface DecesDetecte { candidat: CandidatVivant; ddd: string; joueurIds: string[]; }
-interface RankEntry    { userId: string; totalPoints: number; rank: number; }
+interface RankEntry    { userId: string; totalPoints: number; parisGagnants: number; moyenneAge: number; rank: number; }
 interface CronResult   { checked: number; deaths: number; notifications_sent: number; errors: string[]; }
 
 // ─── Sécurité ─────────────────────────────────────────────────────────────────
@@ -106,22 +106,51 @@ async function computeRanking(
     .eq('saison', saison)
     .eq('mort', true);
 
-  const scores = new Map<string, number>();
+  const scores = new Map<string, { points: number; wins: number; totalAge: number }>();
   for (const p of (paris ?? []) as any[]) {
     const c = p.candidats;
     if (!c?.ddd || new Date(c.ddd).getFullYear() !== saison) continue;
-    const pts = pointsPourAge(calculAge(c.ddn, c.ddd));
-    scores.set(p.joueur, (scores.get(p.joueur) ?? 0) + pts);
+    const age = calculAge(c.ddn, c.ddd) ?? 0;
+    const pts = pointsPourAge(age);
+    const cur = scores.get(p.joueur) ?? { points: 0, wins: 0, totalAge: 0 };
+    scores.set(p.joueur, { points: cur.points + pts, wins: cur.wins + 1, totalAge: cur.totalAge + age });
   }
 
-  // Trier par points décroissants
-  const sorted = Array.from(scores.entries()).sort((a, b) => b[1] - a[1]);
+  // Tri : points desc, puis paris gagnants desc, puis moyenne d'âge asc
+  const sorted = Array.from(scores.entries()).sort(([, a], [, b]) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    const mA = a.wins > 0 ? a.totalAge / a.wins : 0;
+    const mB = b.wins > 0 ? b.totalAge / b.wins : 0;
+    return mA - mB;
+  });
+
   const ranking = new Map<string, RankEntry>();
   let rank = 1;
   for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i][1] < sorted[i - 1][1]) rank = i + 1;
-    ranking.set(sorted[i][0], { userId: sorted[i][0], totalPoints: sorted[i][1], rank });
+    const [userId, s] = sorted[i];
+    if (i > 0) {
+      const prev = sorted[i - 1][1];
+      const mPrev = prev.wins > 0 ? prev.totalAge / prev.wins : 0;
+      const mCur  = s.wins > 0 ? s.totalAge / s.wins : 0;
+      if (s.points !== prev.points || s.wins !== prev.wins || mCur !== mPrev) rank = i + 1;
+    }
+    const moyenneAge = s.wins > 0 ? s.totalAge / s.wins : 0;
+    ranking.set(userId, { userId, totalPoints: s.points, parisGagnants: s.wins, moyenneAge, rank });
   }
+
+  // Mettre à jour la table victoires pour cette saison
+  if (sorted.length > 0) {
+    const rows = Array.from(ranking.values()).map(r => ({
+      joueur_id: r.userId,
+      saison,
+      rang: r.rank,
+    }));
+    // Supprimer les anciens rangs de cette saison puis réinsérer
+    await supabase.from('victoires').delete().eq('saison', saison);
+    await supabase.from('victoires').insert(rows);
+  }
+
   return ranking;
 }
 
