@@ -5,21 +5,32 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabaseServerClient';
+import { formatDate, calculAge, pointsPourAge, buildPhotoUrl } from '@/lib/deathCard';
 
-const WIKIDATA_URL             = 'https://www.wikidata.org/w/api.php';
-const WIKIDATA_BATCH_SIZE      = 50;
-const WIKIDATA_TIMEOUT_MS      = 15_000;
+const WIKIDATA_URL = 'https://www.wikidata.org/w/api.php';
+const WIKIDATA_BATCH_SIZE = 50;
+const WIKIDATA_TIMEOUT_MS = 15_000;
 const DELAY_BETWEEN_BATCHES_MS = 500;
+
+// Limite de l'API batch Resend (max 100 emails par appel) + marge de sécurité
+// entre deux lots pour rester sous la limite de débit (10 req/s par défaut).
+const RESEND_BATCH_SIZE = 100;
+const DELAY_BETWEEN_RESEND_BATCHES_MS = 700;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface CandidatVivant {
-  id: number; nom: string; ddn: string | null; ddd: string | null;
-  wikidata_id: string; photo: string | null;
+  id: number;
+  nom: string;
+  ddn: string | null;
+  ddd: string | null;
+  wikidata_id: string;
+  photo: string | null;
 }
 interface DecesDetecte { candidat: CandidatVivant; ddd: string; joueurIds: string[]; }
-interface RankEntry    { userId: string; totalPoints: number; parisGagnants: number; moyenneAge: number; rank: number; }
-interface CronResult   { checked: number; deaths: number; notifications_sent: number; errors: string[]; }
+interface RankEntry { userId: string; totalPoints: number; parisGagnants: number; moyenneAge: number; rank: number; }
+interface CronResult { checked: number; deaths: number; notifications_sent: number; errors: string[]; }
+interface EmailToSend { to: string; subject: string; html: string; }
 
 // ─── Sécurité ─────────────────────────────────────────────────────────────────
 
@@ -58,38 +69,8 @@ async function checkBatchOnWikidata(wikidataIds: string[]): Promise<Map<string, 
   return result;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers d'affichage propres à l'email (pas au candidat lui-même) ─────────
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const [y, m, d] = iso.split('-');
-  return `${d}/${m}/${y}`;
-}
-function calculAge(ddn: string | null, ddd: string | null): number | null {
-  if (!ddn) return null;
-  const birth = new Date(ddn), ref = ddd ? new Date(ddd) : new Date();
-  let age = ref.getFullYear() - birth.getFullYear();
-  const m = ref.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && ref.getDate() < birth.getDate())) age--;
-  return age;
-}
-// Doit rester identique à utils/fonctions.ts → scores[]
-function pointsPourAge(age: number | null): number {
-  if (age === null) return 0;
-  if (age < 55) return 10;
-  if (age < 65) return 9;
-  if (age < 75) return 8;
-  if (age < 80) return 7;
-  if (age < 85) return 5;
-  if (age < 90) return 3;
-  return 1;
-}
-function formatNomCarte(nom: string): { display: string; fontSize: string; letterSpacing: string } {
-  const len = nom.length;
-  if (len <= 12) return { display: nom, fontSize: '.7rem',  letterSpacing: '3.5px' };
-  if (len <= 18) return { display: nom, fontSize: '.58rem', letterSpacing: '2px'   };
-  return              { display: nom, fontSize: '.48rem', letterSpacing: '1px'   };
-}
 function ordinal(n: number): string {
   if (n === 1) return '1er';
   return `${n}ème`;
@@ -138,7 +119,7 @@ async function computeRanking(
     if (i > 0) {
       const prev = sorted[i - 1][1];
       const mPrev = prev.wins > 0 ? prev.totalAge / prev.wins : 0;
-      const mCur  = s.wins > 0 ? s.totalAge / s.wins : 0;
+      const mCur = s.wins > 0 ? s.totalAge / s.wins : 0;
       if (s.points !== prev.points || s.wins !== prev.wins || mCur !== mPrev) rank = i + 1;
     }
     const moyenneAge = s.wins > 0 ? s.totalAge / s.wins : 0;
@@ -160,51 +141,13 @@ async function computeRanking(
   return ranking;
 }
 
-// ─── Carte Panini inline ──────────────────────────────────────────────────────
+// ─── Carte candidat : image générée par app/api/og/card ───────────────────────
 
-function buildPaniniCardHtml(candidat: CandidatVivant, ddd: string): string {
-  const age = calculAge(candidat.ddn, ddd);
-  const pts = pointsPourAge(age);
-  const serial = '#' + String(candidat.id).padStart(4, '0');
-  const { display, fontSize, letterSpacing } = formatNomCarte(candidat.nom);
-  const photoUrl = candidat.photo
-    ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(candidat.photo.replace(/ /g, '_'))}`
-    : null;
-
-  return `
-<table cellpadding="0" cellspacing="0" align="center" style="margin:28px auto 0;">
-  <tr><td>
-    <div style="width:210px;height:300px;border-radius:16px;position:relative;overflow:hidden;box-shadow:0 4px 28px rgba(0,0,0,.55),0 20px 60px rgba(0,0,0,.45);background:linear-gradient(150deg,#1a1810 0%,#12100a 55%,#0a0908 100%);display:inline-block;vertical-align:top;">
-      <div style="position:absolute;inset:0;border-radius:16px;background:radial-gradient(ellipse 130% 70% at 40% -5%,rgba(160,140,60,.18) 0%,transparent 55%),radial-gradient(ellipse 70% 50% at 100% 105%,rgba(40,35,15,.5) 0%,transparent 50%);"></div>
-      <div style="position:absolute;left:0;top:0;bottom:0;width:34px;border-radius:16px 0 0 16px;background:linear-gradient(180deg,rgba(160,140,90,.85) 0%,rgba(110,95,55,.75) 55%,rgba(60,50,25,.85) 100%);">
-        <div style="position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;">
-          <span style="writing-mode:vertical-rl;transform:rotate(180deg);display:inline-block;font-family:Arial,sans-serif;font-weight:600;font-size:${fontSize};letter-spacing:${letterSpacing};color:rgba(255,255,255,.9);text-transform:uppercase;white-space:nowrap;overflow:hidden;max-height:220px;">${display}</span>
-        </div>
-        <div style="position:absolute;bottom:10px;left:0;width:34px;text-align:center;font-family:'Courier New',monospace;font-size:6px;color:rgba(255,255,255,.3);">${serial}</div>
-      </div>
-      <div style="position:absolute;left:34px;right:0;top:0;height:185px;border-radius:0 16px 0 0;overflow:hidden;">
-        ${photoUrl
-          ? `<img src="${photoUrl}" width="176" height="185" style="width:176px;height:185px;object-fit:cover;object-position:center top;display:block;filter:grayscale(1) brightness(.65);" alt="${candidat.nom}"/>`
-          : `<div style="width:176px;height:185px;background:linear-gradient(160deg,#3d1f28 0%,#1e0f18 100%);text-align:center;line-height:185px;font-size:3.5rem;color:rgba(219,135,143,.1);">◆</div>`
-        }
-        <div style="position:absolute;bottom:0;left:0;right:0;height:80px;background:linear-gradient(to top,#141208,transparent);"></div>
-      </div>
-      <div style="position:absolute;right:11px;top:168px;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#c8af5a 0%,#a08c3a 100%);box-shadow:0 3px 14px rgba(200,175,90,.4),0 0 0 2px rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-        <div style="font-family:Arial,sans-serif;font-size:16px;font-weight:800;color:white;line-height:1;">${pts}</div>
-        <div style="font-family:Arial,sans-serif;font-size:6px;font-weight:500;color:rgba(255,255,255,.72);letter-spacing:1px;text-transform:uppercase;">${pts > 1 ? 'pts' : 'pt'}</div>
-      </div>
-      <div style="position:absolute;left:34px;right:0;bottom:0;padding:0 12px 13px 11px;">
-        <table cellpadding="0" cellspacing="0"><tr>
-          <td style="vertical-align:top;"><div style="font-family:Arial,sans-serif;font-size:7px;color:rgba(219,135,143,.5);letter-spacing:1.5px;text-transform:uppercase;line-height:1;">Naissance</div><div style="font-family:Arial,sans-serif;font-size:11px;font-weight:500;color:rgba(241,235,219,.85);">${formatDate(candidat.ddn)}</div></td>
-          <td style="vertical-align:top;padding:9px 7px 0;color:rgba(219,135,143,.3);font-size:9px;">→</td>
-          <td style="vertical-align:top;"><div style="font-family:Arial,sans-serif;font-size:7px;color:rgba(219,135,143,.5);letter-spacing:1.5px;text-transform:uppercase;line-height:1;">Décès</div><div style="font-family:Arial,sans-serif;font-size:11px;font-weight:500;color:rgba(241,235,219,.85);">${formatDate(ddd)}</div></td>
-        </tr></table>
-        ${age !== null ? `<div style="font-family:Arial,sans-serif;font-size:9px;font-weight:300;color:rgba(200,175,90,.7);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;">${age} ans</div>` : ''}
-      </div>
-      <div style="position:absolute;inset:3px;border-radius:13px;border:1px solid rgba(200,175,90,.25);pointer-events:none;"></div>
-    </div>
-  </td></tr>
-</table>`;
+function buildCardImageUrl(appUrl: string, candidat: CandidatVivant, ddd: string): string {
+  const params = new URLSearchParams({ id: String(candidat.id), nom: candidat.nom, ddd });
+  if (candidat.ddn) params.set('ddn', candidat.ddn);
+  if (candidat.photo) params.set('photo', candidat.photo);
+  return `${appUrl}/api/og/card?${params.toString()}`;
 }
 
 // ─── Email ────────────────────────────────────────────────────────────────────
@@ -216,7 +159,7 @@ function buildEmailHtml(opts: {
   isMine: boolean;
   rankEntry: RankEntry | null;
   gainedPts: number;
-  scorersNames: string[];  // pseudos des joueurs ayant marqué (hors soi-même pour isMine)
+  scorersNames: string[]; // pseudos des joueurs ayant marqué (hors soi-même pour isMine)
 }): string {
   const { displayName, candidat, ddd, isMine, rankEntry, gainedPts, scorersNames } = opts;
 
@@ -231,6 +174,7 @@ function buildEmailHtml(opts: {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://lejeudelamort.fr';
+  const cardImageUrl = buildCardImageUrl(appUrl, candidat, ddd);
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -255,11 +199,12 @@ function buildEmailHtml(opts: {
           </p>
           <p style="margin:0 0 4px;font-size:0.9rem;color:rgba(241,235,219,0.6);line-height:1.7;">${intro}</p>
 
-          ${buildPaniniCardHtml(candidat, ddd)}
+          <img src="${cardImageUrl}" width="210" height="300" alt="${candidat.nom}"
+            style="display:block;margin:28px auto 0;width:210px;height:300px;border-radius:16px;">
 
           <table cellpadding="0" cellspacing="0" width="100%" style="margin-top:32px;"><tr><td align="center">
             <a href="${appUrl}/classement"
-              style="display:inline-block;padding:14px 32px;background:#db878f;color:#0d0d18;font-size:0.75rem;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;text-decoration:none;border-radius:10px;">
+              style="display:inline-block;padding:14px 32px;background:#db878f;color:#0d0d18;font-size:0.75rem;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;text-decoration:none;border-radius:10px;white-space:nowrap;">
               Voir le classement
             </a>
           </td></tr></table>
@@ -267,7 +212,7 @@ function buildEmailHtml(opts: {
 
         <tr><td align="center" style="padding-top:24px;">
           <p style="margin:0;font-size:0.65rem;color:rgba(241,235,219,0.15);letter-spacing:0.5px;">
-            Le Jeu de la Mort — de mauvais goût, et fier de l'être.
+            Le Jeu de la Mort.
           </p>
         </td></tr>
 
@@ -278,18 +223,53 @@ function buildEmailHtml(opts: {
 </html>`;
 }
 
-// ─── Resend ───────────────────────────────────────────────────────────────────
+// ─── Resend (envoi par lots) ────────────────────────────────────────────────
 
-async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<boolean> {
+async function sendEmailBatch(emails: EmailToSend[]): Promise<number> {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) { console.warn('[cron] RESEND_API_KEY manquante — email non envoyé à', opts.to); return false; }
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'Le Jeu de la Mort <noreply@news.lejeudelamort.fr>', to: opts.to, subject: opts.subject, html: opts.html }),
-  });
-  if (!res.ok) { console.error('[cron] Erreur Resend:', await res.text()); return false; }
-  return true;
+  if (!apiKey) { console.warn('[cron] RESEND_API_KEY manquante — lot non envoyé'); return 0; }
+
+  const payload = emails.map(e => ({
+    from: 'Le Jeu de la Mort <noreply@news.lejeudelamort.fr>',
+    to: e.to,
+    subject: e.subject,
+    html: e.html,
+  }));
+
+  const maxRetries = 3;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch('https://api.resend.com/emails/batch', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) return emails.length;
+
+    if (res.status === 429) {
+      const retryAfterHeader = Number(res.headers.get('retry-after'));
+      const wait = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
+        ? retryAfterHeader * 1000
+        : (attempt + 1) * 1000;
+      console.warn(`[cron] 429 Resend — retry dans ${wait}ms (tentative ${attempt + 1}/${maxRetries})`);
+      await sleep(wait);
+      continue;
+    }
+
+    console.error('[cron] Erreur Resend batch:', await res.text());
+    return 0;
+  }
+  console.error('[cron] Échec envoi du lot après', maxRetries, 'tentatives (429 persistant)');
+  return 0;
+}
+
+async function sendAllEmails(emails: EmailToSend[]): Promise<number> {
+  let sent = 0;
+  for (let i = 0; i < emails.length; i += RESEND_BATCH_SIZE) {
+    const chunk = emails.slice(i, i + RESEND_BATCH_SIZE);
+    sent += await sendEmailBatch(chunk);
+    if (i + RESEND_BATCH_SIZE < emails.length) await sleep(DELAY_BETWEEN_RESEND_BATCHES_MS);
+  }
+  return sent;
 }
 
 // ─── Handler principal ────────────────────────────────────────────────────────
@@ -368,12 +348,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // ── 5. Calculer le classement une fois toutes les mises à jour faites ────
   const ranking = await computeRanking(supabase, saison);
 
-  // ── 6. Envoyer les emails ────────────────────────────────────────────────
-  let notificationsSent = 0;
+  // ── 6. Construire puis envoyer les emails (par lots, cf. sendAllEmails) ──
+  const emailsToSend: EmailToSend[] = [];
 
   for (const { candidat, ddd, joueurIds } of decesList) {
-    const joueurSet     = new Set(joueurIds);
-    const gainedPts     = pointsPourAge(calculAge(candidat.ddn, ddd));
+    const joueurSet = new Set(joueurIds);
+    const gainedPts = pointsPourAge(calculAge(candidat.ddn, ddd));
     const candidatAvecDdd = { ...candidat, ddd };
 
     // Pseudos des joueurs ayant marqué (pour l'email "info")
@@ -383,11 +363,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     for (const userId of allUserIds) {
       const profile = profileByUserId.get(userId);
-      const email   = emailByUserId.get(userId);
+      const email = emailByUserId.get(userId);
       if (!profile || !email) continue;
 
       const isMine = joueurSet.has(userId);
-      if (isMine  && !profile.alert_mes_candidats)   continue;
+      if (isMine && !profile.alert_mes_candidats) continue;
       if (!isMine && !profile.alert_autres_candidats) continue;
 
       const subject = isMine
@@ -395,21 +375,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         : `${candidat.nom} est décédé(e)`;
 
       const html = buildEmailHtml({
-        displayName:  profile.display_name ?? 'Joueur',
-        candidat:     candidatAvecDdd,
+        displayName: profile.display_name ?? 'Joueur',
+        candidat: candidatAvecDdd,
         ddd,
         isMine,
-        rankEntry:    ranking.get(userId) ?? null,
+        rankEntry: ranking.get(userId) ?? null,
         gainedPts,
         scorersNames: isMine
           ? []
           : scorersNames.filter(n => n !== profile.display_name),
       });
 
-      const sent = await sendEmail({ to: email, subject, html });
-      if (sent) { notificationsSent++; console.log(`[cron] Email → ${email} (${candidat.nom}, isMine:${isMine})`); }
+      emailsToSend.push({ to: email, subject, html });
     }
   }
+
+  const notificationsSent = await sendAllEmails(emailsToSend);
 
   const result: CronResult = { checked: vivants.length, deaths: decesList.length, notifications_sent: notificationsSent, errors };
   console.log('[cron] Terminé :', result);
