@@ -53,22 +53,31 @@ async function fetchFromWikidata(wikidataId: string): Promise<WikidataCandidat |
   // Doit avoir une date de naissance (P569) — sinon ce n'est pas une personne
   if (!('P569' in claims)) return null;
 
+  // Wikidata encode aussi la précision de la date (9 = année, 10 = mois, 11 = jour).
+  // Quand le jour ou le mois est inconnu, Wikidata renvoie quand même "00" à leur place
+  // (ex: +1964-03-00T00:00:00Z pour "mars 1964"). On ne peut pas insérer "00" comme jour/mois
+  // dans une colonne date Postgres, donc on retombe sur "01" quand l'info manque.
+  function parseWikidataDate(datavalue: { time: string; precision: number } | undefined): string | null {
+    if (!datavalue?.time) return null;
+    const m = datavalue.time.match(/\+(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    const precision = datavalue.precision;
+    const year  = m[1];
+    const month = precision >= 10 ? m[2] : '01'; // précision < 10 => mois inconnu
+    const day   = precision >= 11 ? m[3] : '01'; // précision < 11 => jour inconnu
+    return `${year}-${month}-${day}`;
+  }
+
   // Déjà décédé (P570) — on laisse passer pour afficher l'erreur côté client
   let ddd: string | null = null;
   try {
-    const t = claims.P570?.[0]?.mainsnak?.datavalue?.value?.time as string | undefined;
-    if (t) {
-      const m = t.match(/\+(\d{4})-(\d{2})-(\d{2})/);
-      if (m) ddd = `${m[1]}-${m[2]}-${m[3]}`;
-    }
+    ddd = parseWikidataDate(claims.P570?.[0]?.mainsnak?.datavalue?.value);
   } catch { /* pas de date de décès */ }
 
   // Date de naissance
   let ddn: string | null = null;
   try {
-    const t = claims.P569[0].mainsnak.datavalue.value.time as string;
-    const m = t.match(/\+(\d{4})-(\d{2})-(\d{2})/);
-    if (m) ddn = `${m[1]}-${m[2]}-${m[3]}`;
+    ddn = parseWikidataDate(claims.P569?.[0]?.mainsnak?.datavalue?.value);
   } catch { /* date malformée */ }
 
   // Photo (P18)

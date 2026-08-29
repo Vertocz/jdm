@@ -84,11 +84,22 @@ export async function GET(request: NextRequest) {
       if (!("P569" in claims) || "P570" in claims) continue;
 
       // Date de naissance
+      // NB: Wikidata encode une précision (9=année, 10=mois, 11=jour). Quand le jour
+      // (voire le mois) est inconnu, Wikidata renvoie quand même "00" à leur place
+      // (ex: +1964-03-00T00:00:00Z pour "mars 1964"). On retombe sur "01" dans ce cas,
+      // sinon "1964-03-00" plante l'insertion en base côté /api/paris (jour hors limites).
       let ddn = "";
       try {
-        const dateStr: string = claims.P569[0].mainsnak.datavalue.value.time;
+        const value = claims.P569[0].mainsnak.datavalue.value;
+        const dateStr: string = value.time;
+        const precision: number = value.precision;
         const match = dateStr.match(/\+(\d{4})-(\d{2})-(\d{2})/);
-        if (match) ddn = `${match[1]}-${match[2]}-${match[3]}`;
+        if (match) {
+          const year  = match[1];
+          const month = precision >= 10 ? match[2] : '01';
+          const day   = precision >= 11 ? match[3] : '01';
+          ddn = `${year}-${month}-${day}`;
+        }
       } catch {
         // date malformée ou absente
       }
