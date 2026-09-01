@@ -206,18 +206,12 @@ function buildEmailHtml(opts: {
     <tr><td align="center">
       <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
 
-        <tr><td align="center" style="padding-bottom:32px;">
-          <p style="margin:0;font-size:1.6rem;font-weight:800;color:#f1ebdb;letter-spacing:-0.5px;line-height:1;">
-            Le Jeu de la <span style="color:#db878f;">Mort.</span>
-          </p>
-        </td></tr>
-
         <tr><td style="background:rgba(241,235,219,0.04);border:1px solid rgba(241,235,219,0.08);border-radius:16px;padding:40px 36px;">
           <p style="margin:0 0 6px;font-size:1.4rem;font-weight:800;color:#f1ebdb;letter-spacing:-0.4px;">
             ${isMine ? `Ça y est<span style="color:#db878f;">.</span>` : `Info<span style="color:#db878f;">.</span>`}
           </p>
           <p style="margin:0 0 32px;font-size:0.72rem;font-weight:300;color:rgba(241,235,219,0.3);letter-spacing:1px;text-transform:uppercase;">
-            Bonjour ${displayName}
+            Bonjour ${displayName},
           </p>
           <p style="margin:0 0 4px;font-size:0.9rem;color:rgba(241,235,219,0.6);line-height:1.7;">${intro}</p>
 
@@ -234,7 +228,7 @@ function buildEmailHtml(opts: {
 
         <tr><td align="center" style="padding-top:24px;">
           <p style="margin:0;font-size:0.65rem;color:rgba(241,235,219,0.15);letter-spacing:0.5px;">
-            Le Jeu de la Mort — de mauvais goût, et fier de l'être.
+            Le Jeu de la Mort
           </p>
         </td></tr>
 
