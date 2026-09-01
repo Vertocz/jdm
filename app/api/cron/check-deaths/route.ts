@@ -27,7 +27,14 @@ interface CandidatVivant {
   wikidata_id: string;
   photo: string | null;
 }
-interface DecesDetecte { candidat: CandidatVivant; ddd: string; joueurIds: string[]; }
+interface DecesDetecte {
+  candidat: CandidatVivant;
+  ddd: string;
+  joueurIds: string[];
+  // userId -> liste des années (saisons passées, hors année du décès) où ce
+  // joueur avait parié sur ce candidat sans le re-parier cette année.
+  ancienParieurs: Map<string, number[]>;
+}
 interface RankEntry { userId: string; totalPoints: number; parisGagnants: number; moyenneAge: number; rank: number; }
 interface CronResult { checked: number; deaths: number; notifications_sent: number; errors: string[]; }
 interface EmailToSend { to: string; subject: string; html: string; }
@@ -79,6 +86,12 @@ function joinNames(names: string[]): string {
   if (names.length === 0) return '';
   if (names.length === 1) return names[0];
   return names.slice(0, -1).join(', ') + ' et ' + names[names.length - 1];
+}
+function joinYears(years: number[]): string {
+  const sorted = [...years].sort((a, b) => a - b);
+  if (sorted.length === 0) return '';
+  if (sorted.length === 1) return `en ${sorted[0]}`;
+  return `en ${sorted.slice(0, -1).join(', ')} et ${sorted[sorted.length - 1]}`;
 }
 
 // ─── Classement ───────────────────────────────────────────────────────────────
@@ -157,20 +170,29 @@ function buildEmailHtml(opts: {
   candidat: CandidatVivant;
   ddd: string;
   isMine: boolean;
+  isAncienParieur: boolean;
+  anciennesSaisons: number[];
   rankEntry: RankEntry | null;
   gainedPts: number;
-  scorersNames: string[]; // pseudos des joueurs ayant marqué (hors soi-même pour isMine)
+  scorersNames: string[]; // pseudos des joueurs ayant marqué cette année (hors soi-même pour isMine)
 }): string {
-  const { displayName, candidat, ddd, isMine, rankEntry, gainedPts, scorersNames } = opts;
+  const { displayName, candidat, ddd, isMine, isAncienParieur, anciennesSaisons, rankEntry, gainedPts, scorersNames } = opts;
+
+  const age = calculAge(candidat.ddn, ddd);
 
   let intro: string;
   if (isMine) {
     const ptsStr = `+${gainedPts} point${gainedPts > 1 ? 's' : ''}`;
     const rankStr = rankEntry ? `Tu es ${ordinal(rankEntry.rank)} du classement.` : '';
     intro = `${ptsStr} ! ${rankStr}`;
-  } else {
+  } else if (isAncienParieur) {
+    const ageStr = age !== null ? ` à ${age} ans` : '';
+    intro = `Tu avais repéré <strong style="color:#f1ebdb;">${candidat.nom}</strong> ${joinYears(anciennesSaisons)}. Fallait persévérer ça t'aurait rapporté ${gainedPts} point${gainedPts > 1 ? 's' : ''}.`;
+  } else if (scorersNames.length > 0) {
     const who = joinNames(scorersNames);
     intro = `${who} ${scorersNames.length > 1 ? 'marquent des points' : 'marque des points'} avec <strong style="color:#f1ebdb;">${candidat.nom}</strong>.`;
+  } else {
+    intro = `<strong style="color:#f1ebdb;">${candidat.nom}</strong> nous a quitté(e).`;
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://lejeudelamort.fr';
@@ -212,7 +234,7 @@ function buildEmailHtml(opts: {
 
         <tr><td align="center" style="padding-top:24px;">
           <p style="margin:0;font-size:0.65rem;color:rgba(241,235,219,0.15);letter-spacing:0.5px;">
-            Le Jeu de la Mort.
+            Le Jeu de la Mort — de mauvais goût, et fier de l'être.
           </p>
         </td></tr>
 
@@ -301,7 +323,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const resultMap = await checkBatchOnWikidata(batch.map(c => c.wikidata_id));
       for (const candidat of batch) {
         const ddd = resultMap.get(candidat.wikidata_id);
-        if (ddd) { decesList.push({ candidat, ddd, joueurIds: [] }); }
+        if (ddd) { decesList.push({ candidat, ddd, joueurIds: [], ancienParieurs: new Map() }); }
       }
     } catch (err: unknown) {
       const msg = `Erreur Wikidata lot ${i / WIKIDATA_BATCH_SIZE + 1}: ${err instanceof Error ? err.message : String(err)}`;
@@ -323,7 +345,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   );
   const allUserIds = Array.from(profileByUserId.keys());
 
-  // ── 4. Maj DB pour tous les décès ────────────────────────────────────────
+  // ── 4. Maj DB pour tous les décès + repérage des anciens parieurs ────────
   for (const entry of decesList) {
     const { candidat, ddd } = entry;
 
@@ -343,6 +365,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const { error: upe } = await supabase.from('paris').update({ mort: true }).in('id', pariIds);
       if (upe) errors.push(`Erreur update paris candidat ${candidat.id}: ${upe.message}`);
     }
+
+    // Anciens parieurs : joueurs ayant parié sur ce candidat une saison
+    // antérieure, mais qui ne l'ont pas repris cette année.
+    const { data: historique, error: he } = await supabase
+      .from('paris').select('joueur, saison')
+      .eq('candidat_id', candidat.id).lt('saison', saison);
+    if (he) {
+      errors.push(`Erreur historique candidat ${candidat.id}: ${he.message}`);
+    } else {
+      const joueurSetActuel = new Set(entry.joueurIds);
+      for (const row of (historique ?? []) as any[]) {
+        if (joueurSetActuel.has(row.joueur)) continue; // a re-parié cette année, pas de taquinerie
+        const years = entry.ancienParieurs.get(row.joueur) ?? [];
+        if (!years.includes(row.saison)) years.push(row.saison);
+        entry.ancienParieurs.set(row.joueur, years);
+      }
+    }
   }
 
   // ── 5. Calculer le classement une fois toutes les mises à jour faites ────
@@ -351,12 +390,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // ── 6. Construire puis envoyer les emails (par lots, cf. sendAllEmails) ──
   const emailsToSend: EmailToSend[] = [];
 
-  for (const { candidat, ddd, joueurIds } of decesList) {
+  for (const { candidat, ddd, joueurIds, ancienParieurs } of decesList) {
     const joueurSet = new Set(joueurIds);
     const gainedPts = pointsPourAge(calculAge(candidat.ddn, ddd));
     const candidatAvecDdd = { ...candidat, ddd };
 
-    // Pseudos des joueurs ayant marqué (pour l'email "info")
+    // Pseudos des joueurs ayant marqué cette année (pour l'email "info")
     const scorersNames = joueurIds
       .map(id => profileByUserId.get(id)?.display_name ?? 'Joueur')
       .filter(Boolean);
@@ -367,21 +406,30 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (!profile || !email) continue;
 
       const isMine = joueurSet.has(userId);
-      if (isMine && !profile.alert_mes_candidats) continue;
-      if (!isMine && !profile.alert_autres_candidats) continue;
+      const anciennesSaisons = ancienParieurs.get(userId) ?? [];
+      const isAncienParieur = !isMine && anciennesSaisons.length > 0;
+
+      // L'ancien parieur est traité comme "mes candidats" (c'est un choix
+      // personnel passé) plutôt que "autres candidats".
+      if ((isMine || isAncienParieur) && !profile.alert_mes_candidats) continue;
+      if (!isMine && !isAncienParieur && !profile.alert_autres_candidats) continue;
 
       const subject = isMine
         ? `+${gainedPts} point${gainedPts > 1 ? 's' : ''} — ${candidat.nom} est décédé(e)`
-        : `${candidat.nom} est décédé(e)`;
+        : isAncienParieur
+          ? `${candidat.nom} est décédé(e) — tu l'avais pourtant repéré(e)`
+          : `${candidat.nom} est décédé(e)`;
 
       const html = buildEmailHtml({
         displayName: profile.display_name ?? 'Joueur',
         candidat: candidatAvecDdd,
         ddd,
         isMine,
+        isAncienParieur,
+        anciennesSaisons,
         rankEntry: ranking.get(userId) ?? null,
         gainedPts,
-        scorersNames: isMine
+        scorersNames: isMine || isAncienParieur
           ? []
           : scorersNames.filter(n => n !== profile.display_name),
       });
