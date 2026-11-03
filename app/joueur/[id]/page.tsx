@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import CandidatCard from "@/app/components/CandidatCard";
-import { pointsPourAge, calculAge } from "@/utils/fonctions";
+import { pointsPourAge, calculAge, pariGagnant, pariEnCours } from "@/utils/fonctions";
 
 export default function JoueurPage() {
   const { id: userId } = useParams() as { id: string };
@@ -37,35 +37,21 @@ export default function JoueurPage() {
 
       const currentYear = new Date().getFullYear();
 
-      // On charge TOUS les paris (tous joueurs) pour les saisons passées,
-      // afin de recalculer dynamiquement qui a remporté le classement général.
-      const { data: tousParis } = await supabase
-        .from("paris")
-        .select("id, joueur, saison, candidats ( id, nom, ddn, ddd )")
+      // Victoires au classement général (saisons terminées) : table victoires,
+      // tenue à jour par le cron avec la même règle que la page Classement.
+      const { data: victoiresData } = await supabase
+        .from("victoires")
+        .select("saison")
+        .eq("joueur_id", userId)
+        .eq("rang", 1)
         .lt("saison", currentYear);
-
-      // Calcul du classement par saison passée
-      let nbVictoires = 0;
-      const saisonsGagnees = new Set<number>();
-      const saisonsPasses = [...new Set((tousParis ?? []).map((p: any) => p.saison as number))];
-      for (const saison of saisonsPasses) {
-        const parisDuSaison = (tousParis ?? []).filter((p: any) => p.saison === saison);
-        const scores: Record<string, number> = {};
-        parisDuSaison.forEach((p: any) => {
-          const c = p.candidats;
-          if (!c?.ddd || new Date(c.ddd).getFullYear() !== saison) return;
-          const age = calculAge(c.ddn, c.ddd) ?? 0;
-          scores[p.joueur] = (scores[p.joueur] ?? 0) + pointsPourAge(age);
-        });
-        const vainqueur = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-        if (vainqueur && vainqueur[0] === userId) { nbVictoires++; saisonsGagnees.add(saison); }
-      }
-      setVictoires(nbVictoires);
+      const saisonsGagnees = new Set((victoiresData ?? []).map((v: any) => v.saison as number));
+      setVictoires(saisonsGagnees.size);
       setVictoiresSaisons(saisonsGagnees);
 
       const { data } = await supabase
         .from("paris")
-        .select("id, mort, saison, candidat_id, candidats ( id, nom, ddn, ddd, description, photo )")
+        .select("id, mort, saison, created_at, candidat_id, candidats ( id, nom, ddn, ddd, description, photo )")
         .eq("joueur", userId);
 
       const d = data ?? [];
@@ -95,8 +81,8 @@ export default function JoueurPage() {
   );
 
   const pfy      = paris.filter((p: any) => p.saison === year);
-  const enCours  = pfy.filter((p: any) => { const d = p.candidats?.ddd; return !d || new Date(d).getFullYear() > year; });
-  const gagnants = pfy.filter((p: any) => { const d = p.candidats?.ddd; return d && new Date(d).getFullYear() === year; });
+  const enCours  = pfy.filter((p: any) => pariEnCours(p, p.candidats));
+  const gagnants = pfy.filter((p: any) => pariGagnant(p, p.candidats));
 
   const totalPoints    = gagnants.reduce((s: number, p: any) => s + pointsPourAge(calculAge(p.candidats.ddn, p.candidats.ddd)), 0);
   const enCoursAvecAge = enCours.map((p: any) => ({ ...p, age: calculAge(p.candidats.ddn, p.candidats.ddd) }));

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import { pseudoDejaPris, validerPseudo } from "@/utils/pseudo";
 
 export default function GestionPage() {
   const router = useRouter();
@@ -43,15 +44,13 @@ export default function GestionPage() {
 
     // Validations avant d'envoyer quoi que ce soit
     const trimmedName = displayName.trim();
-    if (!trimmedName) {
-      setMessage({ text: "Le pseudo ne peut pas être vide.", ok: false }); return;
-    }
-    if (trimmedName.length < 3) {
-      setMessage({ text: "Le pseudo doit contenir au moins 3 caractères.", ok: false }); return;
+    const erreurPseudo = validerPseudo(trimmedName);
+    if (erreurPseudo) {
+      setMessage({ text: erreurPseudo + ".", ok: false }); return;
     }
     if (newPwd) {
-      if (newPwd.length < 6) {
-        setMessage({ text: "Le mot de passe doit contenir au moins 6 caractères.", ok: false }); return;
+      if (newPwd.length < 8) {
+        setMessage({ text: "Le mot de passe doit contenir au moins 8 caractères.", ok: false }); return;
       }
       if (newPwd !== confirmPwd) {
         setMessage({ text: "Les mots de passe ne correspondent pas.", ok: false }); return;
@@ -61,14 +60,7 @@ export default function GestionPage() {
     setSaving(true);
     try {
       // Vérifier si le pseudo est déjà pris par quelqu'un d'autre
-      const { data: existing } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .ilike("display_name", trimmedName)
-        .neq("user_id", user.id)
-        .maybeSingle();
-
-      if (existing) {
+      if (await pseudoDejaPris(trimmedName, user.id)) {
         setMessage({ text: "Ce pseudo est déjà utilisé.", ok: false });
         setSaving(false); return;
       }
@@ -77,6 +69,10 @@ export default function GestionPage() {
         .from("profiles")
         .update({ display_name: trimmedName, alert_mes_candidats: alertMes, alert_autres_candidats: alertAutres })
         .eq("user_id", user.id);
+      if (pe?.code === "23505") {
+        setMessage({ text: "Ce pseudo est déjà utilisé.", ok: false });
+        setSaving(false); return;
+      }
       if (pe) throw pe;
 
       if (newPwd) {
@@ -159,7 +155,7 @@ export default function GestionPage() {
               type="password"
               value={newPwd}
               onChange={e => setNewPwd(e.target.value)}
-              placeholder="6 caractères minimum"
+              placeholder="8 caractères minimum"
             />
           </GestionField>
           {newPwd && (

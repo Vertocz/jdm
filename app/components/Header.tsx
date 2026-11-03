@@ -226,7 +226,7 @@ export default function Header() {
             </div>}
             {!signupConfirm && <div className="h-auth-field">
               <label className="h-auth-label">Mot de passe</label>
-              <input className="h-auth-input" type="password" placeholder="6 caractères minimum"
+              <input className="h-auth-input" type="password" placeholder="8 caractères minimum"
                 value={authPwd} onChange={e => setAuthPwd(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && authMode === "signin") handleAuth(); }} />
             </div>}

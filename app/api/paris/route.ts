@@ -1,99 +1,19 @@
 // app/api/paris/route.ts
 //
 // POST /api/paris
-// Crée un pari pour l'utilisateur authentifié.
-// Le candidat est systématiquement vérifié sur Wikidata côté serveur —
-// le client ne fournit que le wikidata_id, toutes les données viennent de Wikidata.
+// Crée un pari pour l'utilisateur authentifié, sur la saison en cours.
+// Le candidat est TOUJOURS revérifié sur Wikidata, même s'il est déjà en base :
+// les décès ne sont enregistrés qu'une fois par nuit, il ne faut pas pouvoir
+// parier entre-temps sur une personne qui vient de mourir.
+// Le client ne fournit que le wikidata_id ; toutes les données viennent de Wikidata.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabaseServerClient';
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@/lib/supabaseServerClient';
+import { entityToPersonne, getEntities, WikidataRateLimitError, type WikidataPersonne } from '@/lib/wikidata';
+import { annee, aujourdhuiParis } from '@/lib/regles';
 
 const MAX_PARIS_PAR_SAISON = 10;
-const WIKIDATA_URL         = 'https://www.wikidata.org/w/api.php';
-const WIKIDATA_TIMEOUT_MS  = 8_000;
-
-// IDENTIFICATION POUR WIKIDATA (obligatoire pour éviter les erreurs 429)
-const WIKIDATA_HEADERS = {
-  'User-Agent': 'LeJeuDeLaMort/1.0 (contact: victor_creze@hotmail.com) NextJS-App',
-  'Accept': 'application/json',
-};
-
-// ─── Wikidata ─────────────────────────────────────────────────────────────────
-
-interface WikidataCandidat {
-  nom: string;
-  ddn: string | null;
-  ddd: string | null;
-  photo: string | null;
-  description: string;
-}
-
-async function fetchFromWikidata(wikidataId: string): Promise<WikidataCandidat | null> {
-  const res = await fetch(
-    `${WIKIDATA_URL}?${new URLSearchParams({
-      action:    'wbgetentities',
-      ids:       wikidataId,
-      props:     'claims|labels|descriptions',
-      languages: 'fr|en',
-      format:    'json',
-    })}`,
-    { signal: AbortSignal.timeout(WIKIDATA_TIMEOUT_MS), headers: WIKIDATA_HEADERS }
-  );
-
-  if (res.status === 429) throw new Error('Wikidata HTTP 429: Too Many Requests');
-  if (!res.ok) return null;
-
-  const data   = await res.json();
-  const entity = data.entities?.[wikidataId];
-  if (!entity || entity.missing !== undefined) return null;
-
-  const claims = entity.claims ?? {};
-
-  // Doit avoir une date de naissance (P569) — sinon ce n'est pas une personne
-  if (!('P569' in claims)) return null;
-
-  // Wikidata encode aussi la précision de la date (9 = année, 10 = mois, 11 = jour).
-  // Quand le jour ou le mois est inconnu, Wikidata renvoie quand même "00" à leur place
-  // (ex: +1964-03-00T00:00:00Z pour "mars 1964"). On ne peut pas insérer "00" comme jour/mois
-  // dans une colonne date Postgres, donc on retombe sur "01" quand l'info manque.
-  function parseWikidataDate(datavalue: { time: string; precision: number } | undefined): string | null {
-    if (!datavalue?.time) return null;
-    const m = datavalue.time.match(/\+(\d{4})-(\d{2})-(\d{2})/);
-    if (!m) return null;
-    const precision = datavalue.precision;
-    const year  = m[1];
-    const month = precision >= 10 ? m[2] : '01'; // précision < 10 => mois inconnu
-    const day   = precision >= 11 ? m[3] : '01'; // précision < 11 => jour inconnu
-    return `${year}-${month}-${day}`;
-  }
-
-  // Déjà décédé (P570) — on laisse passer pour afficher l'erreur côté client
-  let ddd: string | null = null;
-  try {
-    ddd = parseWikidataDate(claims.P570?.[0]?.mainsnak?.datavalue?.value);
-  } catch { /* pas de date de décès */ }
-
-  // Date de naissance
-  let ddn: string | null = null;
-  try {
-    ddn = parseWikidataDate(claims.P569?.[0]?.mainsnak?.datavalue?.value);
-  } catch { /* date malformée */ }
-
-  // Photo (P18)
-  let photo: string | null = null;
-  try {
-    const raw = claims.P18?.[0]?.mainsnak?.datavalue?.value as string | undefined;
-    if (raw) photo = raw.replace(/ /g, '_');
-  } catch { /* pas de photo */ }
-
-  const nom = entity.labels?.fr?.value || entity.labels?.en?.value || wikidataId;
-  const description = entity.descriptions?.fr?.value || entity.descriptions?.en?.value || '';
-
-  return { nom, ddn, ddd, photo, description };
-}
-
-// ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
 
@@ -103,26 +23,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   }
 
-  const token = authHeader.slice(7);
   const userClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
-  const { data: { user }, error: authError } = await userClient.auth.getUser(token);
+  const { data: { user }, error: authError } = await userClient.auth.getUser(authHeader.slice(7));
   if (authError || !user) {
     return NextResponse.json({ error: 'Token invalide' }, { status: 401 });
   }
 
   // ── 2. Valider le body ───────────────────────────────────────────────────
   const body = await request.json().catch(() => null);
-  const wikidataId: string = body?.wikidata_id?.trim();
-  const saison: number     = body?.saison;
+  const wikidataId: string | undefined = typeof body?.wikidata_id === 'string' ? body.wikidata_id.trim() : undefined;
+  const saisonEnCours = annee(aujourdhuiParis());
+  const saison = body?.saison ?? saisonEnCours;
 
-  if (!wikidataId || !wikidataId.match(/^Q\d+$/)) {
+  if (!wikidataId || !/^Q\d+$/.test(wikidataId)) {
     return NextResponse.json({ error: 'wikidata_id invalide' }, { status: 400 });
   }
-  if (!saison || saison < 2020 || saison > new Date().getFullYear()) {
-    return NextResponse.json({ error: 'Saison invalide' }, { status: 400 });
+  if (saison !== saisonEnCours) {
+    return NextResponse.json({ error: `On ne peut parier que sur la saison ${saisonEnCours}` }, { status: 400 });
   }
 
   const supabase = createServerClient();
@@ -140,60 +60,58 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `Maximum ${MAX_PARIS_PAR_SAISON} candidats actifs par saison` }, { status: 422 });
   }
 
-  // ── 4. Candidat déjà en base ? ───────────────────────────────────────────
-  const { data: existingCandidat } = await supabase
+  // ── 4. Vérification Wikidata (systématique) ──────────────────────────────
+  let personne: WikidataPersonne;
+  try {
+    const entities = await getEntities([wikidataId]);
+    const entity = entities[wikidataId];
+    if (!entity || entity.missing !== undefined) {
+      return NextResponse.json({ error: 'Candidat introuvable sur Wikidata' }, { status: 422 });
+    }
+    personne = entityToPersonne(wikidataId, entity);
+  } catch (err) {
+    const isRateLimit = err instanceof WikidataRateLimitError;
+    return NextResponse.json(
+      { error: isRateLimit
+          ? 'Wikidata est temporairement indisponible. Réessaie dans quelques instants.'
+          : 'Impossible de vérifier le candidat sur Wikidata' },
+      { status: isRateLimit ? 429 : 503 },
+    );
+  }
+
+  if (!personne.estPersonne || !personne.ddn) {
+    return NextResponse.json({ error: 'Candidat introuvable sur Wikidata' }, { status: 422 });
+  }
+
+  // ── 5. Candidat déjà en base ? ───────────────────────────────────────────
+  const { data: existing } = await supabase
     .from('candidats')
     .select('id, ddd')
     .eq('wikidata_id', wikidataId)
     .maybeSingle();
 
-  if (existingCandidat?.ddd) {
+  if (personne.decede || existing?.ddd) {
+    // Le cron de la nuit traitera le décès (paris, classement, emails).
     return NextResponse.json({ error: 'Ce candidat est déjà décédé' }, { status: 422 });
   }
 
   let candidatId: number;
 
-  if (existingCandidat) {
-    // Candidat connu — on fait confiance aux données déjà en base
-    candidatId = existingCandidat.id;
+  if (existing) {
+    candidatId = existing.id;
   } else {
-    // ── 5. Candidat inconnu — vérification sur Wikidata ──────────────────
-    //    On ne fait JAMAIS confiance aux données du client.
-    let wikidataData: WikidataCandidat | null;
-    try {
-      wikidataData = await fetchFromWikidata(wikidataId);
-    } catch (err) {
-      const isRateLimit = (err as Error)?.message?.includes('429');
-      return NextResponse.json(
-        { error: isRateLimit
-            ? 'Wikidata est temporairement indisponible. Réessaie dans quelques instants.'
-            : 'Impossible de vérifier le candidat sur Wikidata'
-        },
-        { status: isRateLimit ? 429 : 503 }
-      );
-    }
-
-    if (!wikidataData) {
-      return NextResponse.json({ error: 'Candidat introuvable sur Wikidata' }, { status: 422 });
-    }
-
-    if (wikidataData.ddd) {
-      return NextResponse.json({ error: 'Ce candidat est déjà décédé' }, { status: 422 });
-    }
-
-    // Tout vient de Wikidata — rien du client
     const { data: inserted, error: insertError } = await supabase
       .from('candidats')
       .upsert(
         {
-          nom:         wikidataData.nom,
-          ddn:         wikidataData.ddn,
+          nom:         personne.nom,
+          ddn:         personne.ddn,
           ddd:         null,
-          description: wikidataData.description,
-          photo:       wikidataData.photo ?? '',
+          description: personne.description,
+          photo:       personne.photo ?? '',
           wikidata_id: wikidataId,
         },
-        { onConflict: 'wikidata_id', ignoreDuplicates: true }
+        { onConflict: 'wikidata_id', ignoreDuplicates: true },
       )
       .select('id')
       .maybeSingle();
@@ -203,7 +121,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (inserted) {
       candidatId = inserted.id;
     } else {
-      // Race condition
+      // Inséré entre-temps par une autre requête
       const { data: refetch } = await supabase
         .from('candidats').select('id').eq('wikidata_id', wikidataId).single();
       if (!refetch) return NextResponse.json({ error: 'Candidat introuvable' }, { status: 500 });
@@ -211,19 +129,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // ── 6. Vérifier l'unicité du pari ────────────────────────────────────────
-  const { count: dupeCount } = await supabase
-    .from('paris')
-    .select('*', { count: 'exact', head: true })
-    .eq('joueur', user.id)
-    .eq('candidat_id', candidatId)
-    .eq('saison', saison);
-
-  if (dupeCount && dupeCount > 0) {
-    return NextResponse.json({ error: 'Vous avez déjà parié sur ce candidat cette saison' }, { status: 422 });
-  }
-
-  // ── 7. Créer le pari ─────────────────────────────────────────────────────
+  // ── 6. Créer le pari (unicité garantie par la contrainte en base) ────────
   const { error: pariError } = await supabase
     .from('paris')
     .insert({ candidat_id: candidatId, joueur: user.id, saison, mort: false });
@@ -231,6 +137,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (pariError) {
     if (pariError.code === '23505') {
       return NextResponse.json({ error: 'Vous avez déjà parié sur ce candidat cette saison' }, { status: 422 });
+    }
+    if (pariError.message.includes('10 paris')) {
+      return NextResponse.json({ error: `Maximum ${MAX_PARIS_PAR_SAISON} candidats actifs par saison` }, { status: 422 });
     }
     return NextResponse.json({ error: pariError.message }, { status: 500 });
   }

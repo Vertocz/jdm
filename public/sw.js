@@ -1,4 +1,5 @@
-// dev-stub : se désinstalle pour ne pas bloquer Next.js
+// Service worker minimal : se désinstalle et recharge les pages ouvertes.
+// Sert à nettoyer les navigateurs qui auraient gardé un ancien service worker.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => {
   event.waitUntil(

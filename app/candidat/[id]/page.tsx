@@ -5,7 +5,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import CandidatCard from "@/app/components/CandidatCard";
-import { calculAge } from "@/utils/fonctions";
+import { annee, pariGagnant } from "@/utils/fonctions";
 
 export default function PageCandidat({ params }: { params: Promise<{ id: string }> }) {
   const { id }    = use(params);
@@ -31,7 +31,7 @@ export default function PageCandidat({ params }: { params: Promise<{ id: string 
       if (!cand) { setLoading(false); return; }
 
       const { data: paris } = await supabase
-        .from("paris").select("id, saison, joueur").eq("candidat_id", Number(id));
+        .from("paris").select("id, saison, joueur, created_at").eq("candidat_id", Number(id));
       if (!paris?.length) { setLoading(false); return; }
 
       const joueurs = [...new Set(paris.map((p: any) => p.joueur))];
@@ -60,11 +60,11 @@ export default function PageCandidat({ params }: { params: Promise<{ id: string 
   );
 
   const isDead    = !!candidat.ddd;
-  const deathYear = isDead ? new Date(candidat.ddd).getFullYear() : null;
+  const deathYear = isDead ? annee(candidat.ddd) : null;
 
   const totalVotes    = votes.length;
   const firstVoteYear = totalVotes > 0 ? Math.min(...votes.map((v: any) => v.saison)) : null;
-  const gagnants      = isDead ? votes.filter((v: any) => v.saison === deathYear) : [];
+  const gagnants      = isDead ? votes.filter((v: any) => pariGagnant(v, candidat)) : [];
   const votesYear     = year ? votes.filter((v: any) => v.saison === year) : [];
 
   // Couleurs selon vivant / mort

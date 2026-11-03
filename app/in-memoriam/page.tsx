@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import CandidatCard from "@/app/components/CandidatCard";
 import { Candidat } from "@/types";
+import { annee } from "@/lib/regles";
 
 /* ── Carrousel ─────────────────────────────────────────────────────────────
    - Une seule carte visible à la fois, centrée
@@ -179,7 +180,7 @@ export default function InMemoriam() {
 
       const g: Record<number, Candidat[]> = {};
       (data ?? []).forEach((c: Candidat) => {
-        const y = new Date(c.ddd!).getFullYear();
+        const y = annee(c.ddd!);
         if (!g[y]) g[y] = [];
         g[y].push(c);
       });

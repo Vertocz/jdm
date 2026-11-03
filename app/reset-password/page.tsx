@@ -100,7 +100,7 @@ export default function ResetPasswordPage() {
         {step === "form" && (
           <>
             <div className="h-auth-heading" style={{ marginBottom: 8 }}>Nouveau mot de<em> passe.</em></div>
-            <p className="h-auth-sub" style={{ marginBottom: 28 }}>6 caractères minimum</p>
+            <p className="h-auth-sub" style={{ marginBottom: 28 }}>8 caractères minimum</p>
 
             {error && <div className="h-auth-error">{error}</div>}
 
