@@ -4,19 +4,22 @@
 // recalée sur les vraies valeurs de .panini-card.dead dans globals.css
 // (dimensions x2 pour un rendu net en 210x300 CSS sur écrans retina).
 //
-// Usage : GET /api/og/card?id=137&nom=Philippe%20Bouvard&ddn=1929-02-13&ddd=2026-08-24&photo=Philippe_Bouvard_2018.jpg
-// Test rapide : ouvrir l'URL ci-dessus directement dans le navigateur.
+// Usage : GET /api/og/card?id=137
+// Les données sont lues en base : seul un candidat réellement décédé peut avoir
+// sa carte (impossible de fabriquer une fausse carte via l'URL).
 
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { formatDate, calculAge, pointsPourAge, buildPhotoUrl, cardNameStyle } from '@/lib/deathCard';
 
-export const runtime = 'edge';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
-// Place ces 2 fichiers dans app/api/og/card/fonts/ (télécharger sur
-// https://fonts.google.com/specimen/Outfit)
-const outfitBold = fetch(new URL('./fonts/Outfit-Bold.ttf', import.meta.url)).then(r => r.arrayBuffer());
-const outfitSemiBold = fetch(new URL('./fonts/Outfit-SemiBold.ttf', import.meta.url)).then(r => r.arrayBuffer());
+// Polices Outfit (https://fonts.google.com/specimen/Outfit) dans app/api/og/card/fonts/
+const fontsDir = join(process.cwd(), 'app/api/og/card/fonts');
+const outfitBold = readFile(join(fontsDir, 'Outfit-Bold.ttf'));
+const outfitSemiBold = readFile(join(fontsDir, 'Outfit-SemiBold.ttf'));
 
 const CARD_W = 420; // 210 x2
 const CARD_H = 600; // 300 x2
@@ -24,13 +27,23 @@ const STRIP_W = 68; // 34 x2
 const PHOTO_H = 370; // 185 x2
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl;
+  const idParam = request.nextUrl.searchParams.get('id') ?? '';
+  if (!/^\d{1,9}$/.test(idParam)) return new Response('id invalide', { status: 400 });
 
-  const nom = (searchParams.get('nom') ?? 'Inconnu').slice(0, 40);
-  const ddn = searchParams.get('ddn');
-  const ddd = searchParams.get('ddd');
-  const photo = searchParams.get('photo');
-  const id = searchParams.get('id') ?? '0';
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false } },
+  );
+  const { data: candidat } = await supabase
+    .from('candidats').select('id, nom, ddn, ddd, photo').eq('id', Number(idParam)).maybeSingle();
+  if (!candidat?.ddd) return new Response('Candidat introuvable', { status: 404 });
+
+  const nom: string = (candidat.nom ?? 'Inconnu').slice(0, 40);
+  const ddn: string | null = candidat.ddn;
+  const ddd: string = candidat.ddd;
+  const photo: string | null = candidat.photo || null;
+  const id = String(candidat.id);
 
   const age = calculAge(ddn, ddd);
   const pts = pointsPourAge(age);

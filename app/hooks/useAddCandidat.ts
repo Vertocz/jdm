@@ -26,27 +26,20 @@ export function useAddCandidat(userId: string | undefined): UseAddCandidatResult
       setLoading(true);
 
       try {
-        // Récupérer le token JWT pour l'envoyer à la route API
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) {
           return { success: false, error: "Session expirée, veuillez vous reconnecter" };
         }
 
-        // Toute la validation se passe désormais côté serveur
+        // Toute la validation se fait côté serveur, qui relit le candidat sur
+        // Wikidata : seul l'identifiant est envoyé.
         const res = await fetch("/api/paris", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({
-            wikidata_id:  candidat.wikidata_id,
-            saison,
-            nom:         candidat.nom,
-            ddn:         candidat.ddn || null,
-            description: candidat.description ?? "",
-            photo:       candidat.photo ?? "",
-          }),
+          body: JSON.stringify({ wikidata_id: candidat.wikidata_id, saison }),
         });
 
         const data = await res.json();

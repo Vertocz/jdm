@@ -7,7 +7,7 @@ import { useSupabaseAuth } from "@/app/hooks/useSupabaseAuth";
 import { useSearchCandidats } from "@/app/hooks/useSearchCandidats";
 import CandidatCard from "@/app/components/CandidatCard";
 import CandidatCardModal from "@/app/components/CandidatCardModal";
-import { calculAge, pointsPourAge, formatNomCarte, formatFr } from "@/utils/fonctions";
+import { calculAge, pointsPourAge, formatNomCarte, formatFr, pariGagnant, pariEnCours } from "@/utils/fonctions";
 import { Pari, CandidatRecherche } from "@/types";
 
 /* ══ Carte de résultat de recherche (style panini complet) ═══════════════ */
@@ -340,7 +340,7 @@ export default function SalleAttente() {
 
   const loadParis = useCallback(async (userId: string) => {
     const { data, error: e } = await supabase.from("paris")
-      .select("id, mort, saison, candidat_id, candidats ( id, nom, ddn, ddd, description, photo, wikidata_id )")
+      .select("id, mort, saison, created_at, candidat_id, candidats ( id, nom, ddn, ddd, description, photo, wikidata_id )")
       .eq("joueur", userId);
     if (e) throw e;
     const data_ = (data ?? []) as unknown as Pari[];
@@ -401,8 +401,8 @@ export default function SalleAttente() {
   );
 
   const parisForYear   = paris.filter(p => p.saison === selectedYear);
-  const enCours        = parisForYear.filter(p => { const d = p.candidats?.ddd; return !d || new Date(d).getFullYear() > selectedYear; });
-  const gagnants       = parisForYear.filter(p => { const d = p.candidats?.ddd; return d && new Date(d).getFullYear() === selectedYear; });
+  const enCours        = parisForYear.filter(p => pariEnCours(p, p.candidats));
+  const gagnants       = parisForYear.filter(p => pariGagnant(p, p.candidats));
   const enCoursAvecAge = enCours.map(p => ({ ...p, age: calculAge(p.candidats.ddn, p.candidats.ddd) }));
   const totalPoints    = gagnants.reduce((s, p) => s + pointsPourAge(calculAge(p.candidats.ddn, p.candidats.ddd)), 0);
   const coupDePoker    = enCoursAvecAge.length > 0 ? enCoursAvecAge.reduce((y, p) => ((p.age ?? 999) < (y.age ?? 999) ? p : y)) : null;

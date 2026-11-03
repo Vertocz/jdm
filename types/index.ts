@@ -25,6 +25,7 @@ export interface Pari {
   id: string;
   mort: boolean;
   saison: number;
+  created_at?: string | null;
   candidat_id: number;
   candidats: Candidat;
 }

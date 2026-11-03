@@ -38,8 +38,8 @@ export function useResetPassword(): UseResetPasswordResult {
   const updatePassword = async (newPassword: string): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
     try {
-      if (newPassword.length < 6) {
-        return { success: false, error: "Le mot de passe doit contenir au moins 6 caractères" };
+      if (newPassword.length < 8) {
+        return { success: false, error: "Le mot de passe doit contenir au moins 8 caractères" };
       }
 
       const { error } = await supabase.auth.updateUser({ password: newPassword });

@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { pointsPourAge, calculAge } from "@/utils/fonctions";
 import CandidatCardModal from "@/app/components/CandidatCardModal";
 import { CandidatRecherche } from "@/types";
 
@@ -153,69 +152,30 @@ export default function Classement() {
   useEffect(() => {
     (async () => {
       try {
-        const { data: profs } = await supabase.from("profiles").select("user_id, display_name");
-        const seen = new Set<string>();
-        const profiles = (profs ?? []).filter(p => {
-          if (seen.has(p.user_id)) return false;
-          seen.add(p.user_id); return true;
-        });
+        // Le classement est calculé en base (fonction SQL public.classement) :
+        // même règle que le cron, et pas de limite de 1 000 paris.
+        // Tri : points desc, paris gagnants desc, moyenne d'âge asc.
+        const { data: saisons, error: se } = await supabase.rpc("saisons");
+        if (se) throw se;
+        const listYears = ((saisons ?? []) as number[]).sort((a, b) => b - a);
 
-        // Récupère aussi photo et wikidata_id pour les avatars
-        const { data: paris } = await supabase
-          .from("paris")
-          .select("id, joueur, saison, candidat_id, candidats ( id, nom, ddn, ddd, photo, wikidata_id, description )");
+        const resultats = await Promise.all(listYears.map(async annee => {
+          const { data, error: ce } = await supabase.rpc("classement", { p_saison: annee });
+          if (ce) throw ce;
+          return [annee, data ?? []] as const;
+        }));
 
-        const byYear: Record<number, any[]> = {};
-        const yearsSet = new Set<number>();
-        (paris ?? []).forEach((p: any) => {
-          yearsSet.add(p.saison);
-          if (!byYear[p.saison]) byYear[p.saison] = [];
-          byYear[p.saison].push(p);
-        });
-
-        const listYears = Array.from(yearsSet).sort((a, b) => b - a);
         const classements: Record<number, Score[]> = {};
-
-        listYears.forEach(annee => {
-          const sm: Record<string, { points: number; wins: number; totalAge: number; candidats: CandidatGagnant[] }> = {};
-
-          byYear[annee].forEach((p: any) => {
-            const c = p.candidats;
-            if (!c?.ddd || new Date(c.ddd).getFullYear() !== annee) return;
-            const age = calculAge(c.ddn, c.ddd) ?? 0;
-            const pts = pointsPourAge(age);
-            if (!sm[p.joueur]) sm[p.joueur] = { points: 0, wins: 0, totalAge: 0, candidats: [] };
-            sm[p.joueur].points   += pts;
-            sm[p.joueur].wins     += 1;
-            sm[p.joueur].totalAge += age;
-            sm[p.joueur].candidats.push({
-              id: c.id, nom: c.nom, ddn: c.ddn, ddd: c.ddd,
-              photo: c.photo, wikidata_id: c.wikidata_id, description: c.description,
-            });
-          });
-
-          const jo = new Set(byYear[annee].map((p: any) => p.joueur));
-          classements[annee] = profiles
-            .filter(p => jo.has(p.user_id))
-            .map(p => {
-              const s = sm[p.user_id] || { points: 0, wins: 0, totalAge: 0, candidats: [] };
-              const moyenneAge = s.wins > 0 ? s.totalAge / s.wins : 0;
-              return {
-                user_id: p.user_id,
-                display_name: p.display_name || "Joueur inconnu",
-                totalPoints: s.points,
-                parisGagnants: s.wins,
-                moyenneAge,
-                candidatsGagnants: s.candidats,
-              };
-            })
-            .sort((a, b) => {
-              if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
-              if (b.parisGagnants !== a.parisGagnants) return b.parisGagnants - a.parisGagnants;
-              // Départage 3 : moyenne d'âge la plus basse (pari plus risqué)
-              return a.moyenneAge - b.moyenneAge;
-            });
-        });
+        for (const [annee, rows] of resultats) {
+          classements[annee] = (rows as any[]).map(r => ({
+            user_id: r.user_id,
+            display_name: r.display_name || "Joueur inconnu",
+            totalPoints: r.total_points,
+            parisGagnants: r.paris_gagnants,
+            moyenneAge: Number(r.moyenne_age),
+            candidatsGagnants: r.candidats as CandidatGagnant[],
+          }));
+        }
 
         setCl(classements); setYears(listYears); setYear(listYears[0] ?? null);
       } catch { setError("Impossible de charger le classement."); }

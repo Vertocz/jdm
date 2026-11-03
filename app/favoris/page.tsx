@@ -25,16 +25,19 @@ export default function Favoris() {
   const doLoad = async () => {
     setError(null); setLoading(true);
     try {
-      const { data: paris, error: e } = await supabase.from("paris").select("*");
-      if (e) throw e;
+      // Comptages faits en base (fonction SQL public.top_candidats) : pas de
+      // limite de 1 000 paris.
+      const [{ data: all, error: e1 }, { data: year, error: e2 }] = await Promise.all([
+        supabase.rpc("top_candidats", { p_saison: null, p_min_votes: 1, p_limit: 3 }),
+        supabase.rpc("top_candidats", { p_saison: currentYear, p_min_votes: 3, p_limit: 3 }),
+      ]);
+      if (e1) throw e1;
+      if (e2) throw e2;
+      const toEntries = (rows: any[] | null) =>
+        (rows ?? []).map(r => ({ candidat_id: r.candidat_id as number, totalVotes: r.votes as number }));
 
       // All time
-      const gAll: Record<number, number> = {};
-      (paris ?? []).forEach((p: any) => { gAll[p.candidat_id] = (gAll[p.candidat_id] || 0) + 1; });
-      const topA = Object.entries(gAll)
-        .map(([id, v]) => ({ candidat_id: Number(id), totalVotes: v as number }))
-        .sort((a, b) => b.totalVotes - a.totalVotes)
-        .slice(0, 3);
+      const topA = toEntries(all);
       if (topA.length) {
         const { data: cands } = await supabase.from("candidats").select("*").in("id", topA.map(e => e.candidat_id));
         const m: Record<number, any> = {};
@@ -43,14 +46,7 @@ export default function Favoris() {
       }
 
       // Année courante
-      const parisY = (paris ?? []).filter((p: any) => p.saison === currentYear);
-      const gY: Record<number, number> = {};
-      parisY.forEach((p: any) => { gY[p.candidat_id] = (gY[p.candidat_id] || 0) + 1; });
-      const eli = Object.entries(gY)
-        .filter(([, v]) => v >= 3)
-        .map(([id, v]) => ({ candidat_id: Number(id), totalVotes: v as number }))
-        .sort((a, b) => b.totalVotes - a.totalVotes)
-        .slice(0, 3);
+      const eli = toEntries(year);
       if (eli.length) {
         const { data: cands } = await supabase.from("candidats").select("*").in("id", eli.map(e => e.candidat_id));
         const m: Record<number, any> = {};
