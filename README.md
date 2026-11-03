@@ -19,8 +19,11 @@ Next.js 16 (App Router) · Supabase (Postgres + Auth) · Resend (emails) · Verc
 | 90 et plus | 1 |
 
 Un pari rapporte des points si le candidat meurt pendant la saison du pari **et**
-si le pari a été posé avant le jour du décès (heure de Paris). Départage : nombre
-de paris gagnants, puis moyenne d'âge la plus basse.
+si le pari a été posé avant le jour du décès (heure de Paris).
+
+Départage, dans l'ordre : nombre de paris gagnants, moyenne d'âge au décès la
+plus basse, puis âge exact (au jour près) du candidat gagnant le plus jeune, du
+deuxième plus jeune, etc. Si tout est identique, les joueurs sont ex æquo.
 
 Ces règles existent à deux endroits, à modifier ensemble :
 `lib/regles.ts` (pages joueur) et les fonctions SQL `points_pour_age` / `classement`
