@@ -1,7 +1,7 @@
 // utils/fonctions.ts
 
 // Les règles de calcul vivent dans lib/regles.ts (source unique).
-export { calculAge, pointsPourAge, pariGagnant, pariEnCours, annee } from "@/lib/regles";
+export { calculAge, pointsPourAge, pariGagnant, pariEnCours, annee, saisonEnCours } from "@/lib/regles";
 
 /** "YYYY-MM-DD" → "JJ/MM/AAAA", sans passer par new Date() (décalage UTC). */
 export function formatFr(dateStr: string | null): string {

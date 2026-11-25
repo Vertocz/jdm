@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@/lib/supabaseServerClient';
 import { entityToPersonne, getEntities, WikidataRateLimitError, type WikidataPersonne } from '@/lib/wikidata';
-import { annee, aujourdhuiParis } from '@/lib/regles';
+import { saisonEnCours as saisonDuJour } from '@/lib/regles';
 
 const MAX_PARIS_PAR_SAISON = 10;
 
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── 2. Valider le body ───────────────────────────────────────────────────
   const body = await request.json().catch(() => null);
   const wikidataId: string | undefined = typeof body?.wikidata_id === 'string' ? body.wikidata_id.trim() : undefined;
-  const saisonEnCours = annee(aujourdhuiParis());
+  const saisonEnCours = saisonDuJour();
   const saison = body?.saison ?? saisonEnCours;
 
   if (!wikidataId || !/^Q\d+$/.test(wikidataId)) {

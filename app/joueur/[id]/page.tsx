@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import CandidatCard from "@/app/components/CandidatCard";
-import { pointsPourAge, calculAge, pariGagnant, pariEnCours } from "@/utils/fonctions";
+import { pointsPourAge, calculAge, pariGagnant, pariEnCours, saisonEnCours } from "@/utils/fonctions";
 
 export default function JoueurPage() {
   const { id: userId } = useParams() as { id: string };
@@ -13,7 +13,7 @@ export default function JoueurPage() {
   const [victoires,        setVictoires]        = useState<number>(0);
   const [victoiresSaisons, setVictoiresSaisons] = useState<Set<number>>(new Set());
   const [paris,    setParis]    = useState<any[]>([]);
-  const [year,     setYear]     = useState<number>(new Date().getFullYear());
+  const [year,     setYear]     = useState<number>(() => saisonEnCours());
   const [years,    setYears]    = useState<number[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
@@ -35,7 +35,7 @@ export default function JoueurPage() {
       if (!prof) { setLoading(false); return; }
       setProfile(prof);
 
-      const currentYear = new Date().getFullYear();
+      const currentYear = saisonEnCours();
 
       // Victoires au classement général (saisons terminées) : table victoires,
       // tenue à jour par le cron avec la même règle que la page Classement.
@@ -57,7 +57,7 @@ export default function JoueurPage() {
       const d = data ?? [];
       setParis(d);
 
-      const cur = new Date().getFullYear();
+      const cur = saisonEnCours();
       const uy = [...new Set(d.map((p: any) => p.saison) as number[])].sort((a, b) => b - a);
       if (!uy.includes(cur)) uy.unshift(cur);
       setYears(uy); setYear(cur);

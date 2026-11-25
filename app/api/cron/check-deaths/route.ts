@@ -17,7 +17,7 @@ import {
   createServerClient, fetchAllRows, isCronAuthorized, listAllUsers,
 } from '@/lib/supabaseServerClient';
 import { calculAge, pointsPourAge, escapeHtml } from '@/lib/deathCard';
-import { annee, pariGagnant } from '@/lib/regles';
+import { annee, pariGagnant, saisonEnCours } from '@/lib/regles';
 import { bestClaimValue, getEntities, hasClaim, parseWikidataDate } from '@/lib/wikidata';
 
 export const maxDuration = 300;
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const errors: string[] = [];
   const supabase = createServerClient();
-  const saisonCourante = new Date().getFullYear();
+  const saisonCourante = saisonEnCours();
   console.log(`[cron] Démarrage check-deaths`);
 
   const finish = async (r: CronResult) => {

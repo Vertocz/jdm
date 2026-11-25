@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import CandidatCard from "@/app/components/CandidatCard";
+import { saisonEnCours } from "@/utils/fonctions";
 
 type Entry = { candidat_id: number; totalVotes: number; candidat: any };
 
@@ -13,7 +14,7 @@ export default function Favoris() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
   const [screenW, setScreenW] = useState(820);
-  const currentYear = new Date().getFullYear();
+  const currentYear = saisonEnCours();
 
   useEffect(() => {
     const check = () => setScreenW(window.innerWidth);

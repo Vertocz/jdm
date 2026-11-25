@@ -7,7 +7,7 @@ import { useSupabaseAuth } from "@/app/hooks/useSupabaseAuth";
 import { useSearchCandidats } from "@/app/hooks/useSearchCandidats";
 import CandidatCard from "@/app/components/CandidatCard";
 import CandidatCardModal from "@/app/components/CandidatCardModal";
-import { calculAge, pointsPourAge, formatNomCarte, formatFr, pariGagnant, pariEnCours } from "@/utils/fonctions";
+import { calculAge, pointsPourAge, formatNomCarte, formatFr, pariGagnant, pariEnCours, saisonEnCours } from "@/utils/fonctions";
 import { Pari, CandidatRecherche } from "@/types";
 
 /* ══ Carte de résultat de recherche (style panini complet) ═══════════════ */
@@ -322,7 +322,7 @@ export default function SalleAttente() {
   const [victoiresClassement,  setVictoiresClassement]  = useState<number>(0);
   const [victoiresSaisons,     setVictoiresSaisons]     = useState<Set<number>>(new Set());
   const [paris,                setParis]                = useState<Pari[]>([]);
-  const [selectedYear,  setSelectedYear]  = useState<number>(new Date().getFullYear());
+  const [selectedYear,  setSelectedYear]  = useState<number>(() => saisonEnCours());
   const [years,         setYears]         = useState<number[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState<string | null>(null);
@@ -345,7 +345,7 @@ export default function SalleAttente() {
     if (e) throw e;
     const data_ = (data ?? []) as unknown as Pari[];
     setParis(data_);
-    const cur = new Date().getFullYear();
+    const cur = saisonEnCours();
     const uy = [...new Set(data_.map(p => p.saison))].sort((a, b) => b - a);
     if (!uy.includes(cur)) uy.unshift(cur);
     setYears(uy);
@@ -359,7 +359,7 @@ export default function SalleAttente() {
       setProfile(prof);
 
       // Victoires au classement général (saisons terminées uniquement)
-      const currentYear = new Date().getFullYear();
+      const currentYear = saisonEnCours();
       const { data: victoiresData } = await supabase
         .from("victoires")
         .select("saison")
@@ -382,6 +382,7 @@ export default function SalleAttente() {
 
   const handleAdded = async () => {
     setSelected(null);
+    setSelectedYear(saisonEnCours());
     if (user) { try { await loadParis(user.id); } catch {} }
   };
 
@@ -407,7 +408,12 @@ export default function SalleAttente() {
   const totalPoints    = gagnants.reduce((s, p) => s + pointsPourAge(calculAge(p.candidats.ddn, p.candidats.ddd)), 0);
   const coupDePoker    = enCoursAvecAge.length > 0 ? enCoursAvecAge.reduce((y, p) => ((p.age ?? 999) < (y.age ?? 999) ? p : y)) : null;
   const moyenneAge     = enCoursAvecAge.length > 0 ? Math.round(enCoursAvecAge.reduce((s, p) => s + (p.age ?? 0), 0) / enCoursAvecAge.length) : 0;
-  const existingIds    = parisForYear.map(p => p.candidats?.wikidata_id).filter(Boolean) as string[];
+  // Les nouveaux paris vont toujours sur la saison du jour, même si l'onglet
+  // affiché est une saison passée ou si la page est restée ouverte à minuit.
+  const saison         = saisonEnCours();
+  const parisSaison    = paris.filter(p => p.saison === saison);
+  const actifsSaison   = parisSaison.filter(p => pariEnCours(p, p.candidats)).length;
+  const existingIds    = parisSaison.map(p => p.candidats?.wikidata_id).filter(Boolean) as string[];
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
@@ -568,8 +574,8 @@ export default function SalleAttente() {
           candidat={selected}
           onClose={() => setSelected(null)}
           user={user}
-          saison={selectedYear}
-          parisEnCours={enCours.length}
+          saison={saison}
+          parisEnCours={actifsSaison}
           existingPariIds={existingIds}
           onCandidatAdded={handleAdded}
         />

@@ -2,7 +2,7 @@
 "use client";
 
 import { User } from "@supabase/supabase-js";
-import { calculAge, pointsPourAge, capitalizeFirst, formatNomCarte, formatFr } from "@/utils/fonctions";
+import { calculAge, pointsPourAge, capitalizeFirst, formatNomCarte, formatFr, saisonEnCours } from "@/utils/fonctions";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAddCandidat } from "@/app/hooks/useAddCandidat";
@@ -42,7 +42,7 @@ export default function CandidatCardModal({
   const isDead = !!ddd;
   const age    = calculAge(candidat.ddn, ddd);
   const points = pointsPourAge(age);
-  const currentYear = saison ?? new Date().getFullYear();
+  const currentYear = saison ?? saisonEnCours();
   const canAdd      = !!user && !isDead && (parisEnCours !== undefined ? parisEnCours < 10 : true);
   const alreadyAdded = existingPariIds?.includes(candidat.wikidata_id);
   const showButton   = user && !alreadyAdded && canAdd;

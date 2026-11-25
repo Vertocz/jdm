@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { annee, aujourdhuiParis, calculAge, pariEnCours, pariGagnant, pointsPourAge } from "../lib/regles";
+import { annee, aujourdhuiParis, calculAge, pariEnCours, pariGagnant, pointsPourAge, saisonEnCours } from "../lib/regles";
 
 describe("calculAge", () => {
   it("compte les années révolues", () => {
@@ -66,5 +66,12 @@ describe("dates", () => {
   });
   it("donne la date du jour à Paris", () => {
     expect(aujourdhuiParis(new Date("2026-12-31T23:30:00Z"))).toBe("2027-01-01");
+  });
+});
+
+describe("saisonEnCours", () => {
+  it("bascule à minuit heure de Paris, pas à minuit UTC", () => {
+    expect(saisonEnCours(new Date("2026-12-31T22:59:00Z"))).toBe(2026);
+    expect(saisonEnCours(new Date("2026-12-31T23:00:00Z"))).toBe(2027);
   });
 });

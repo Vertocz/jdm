@@ -75,6 +75,22 @@ Lancer un cron à la main :
 curl -H "Authorization: Bearer $CRON_SECRET" https://lejeudelamort.fr/api/cron/check-deaths
 ```
 
+## Emails à tous les joueurs
+
+`POST /api/admin/broadcast` envoie un email à tous les inscrits dont l'adresse
+est confirmée. Les modèles prêts à l'emploi sont dans `emails/`. Par exemple, pour
+l'ouverture de la saison 2027 (à lancer le 1er janvier) :
+
+```bash
+jq -n --arg subject "La saison 2027 est ouverte" \
+      --rawfile html emails/nouvelle-saison-2027.html \
+      '{subject: $subject, html: $html}' \
+| curl -X POST https://lejeudelamort.fr/api/admin/broadcast \
+       -H "Authorization: Bearer $CRON_SECRET" \
+       -H "Content-Type: application/json" \
+       --data @-
+```
+
 ## Vérifications
 
 ```bash

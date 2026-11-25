@@ -19,6 +19,11 @@ export function aujourdhuiParis(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(now);
 }
 
+/** Saison en cours : l'année du jour à Paris, quel que soit le fuseau de l'appareil. */
+export function saisonEnCours(now: Date = new Date()): number {
+  return annee(aujourdhuiParis(now));
+}
+
 /** Année d'une date "YYYY-MM-DD". */
 export function annee(iso: string): number {
   return Number(iso.slice(0, 4));
