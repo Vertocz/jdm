@@ -586,7 +586,7 @@ export default function HomePage() {
           <p className="eyebrow">Paris, célébrités &amp; mauvais goût assumé</p>
           <h1 className="hero-title">Le Jeu<br /><em>de la Mort</em></h1>
           <p className="hero-desc">
-            Chaque année, tu constitues une équipe de personnalités vivantes.<br />
+            Chaque année, tu remplis ta salle d&apos;attente de personnalités vivantes.<br />
             Si l&apos;une d&apos;elles vient à disparaître, tu marques des points.<br />
             Plus la personnalité est jeune, plus les points sont élevés.
           </p>

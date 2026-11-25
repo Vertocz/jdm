@@ -1,7 +1,7 @@
 {
   "name": "Le Jeu de la Mort",
   "short_name": "JDM",
-  "description": "Chaque année, constitue ton équipe. Si l'une d'elles disparaît, tu marques des points.",
+  "description": "Chaque année, remplis ta salle d'attente. Si l'une de tes personnalités disparaît, tu marques des points.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0d0d18",

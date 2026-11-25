@@ -68,6 +68,7 @@ Principes de sécurité :
 | `/api/cron/check-deaths` | tous les jours 23h59 | Détecte les décès sur Wikidata, met à jour paris et rangs, envoie les emails |
 | `/api/cron/update-photos` | lundi 3h00 | Met à jour les photos depuis Wikidata |
 | `/api/cron/keep-alive` | lundi 12h00 | Garde le projet Supabase actif |
+| `/api/cron/nouvelle-saison` | 1er janvier 9h00 | Email d'ouverture de saison à tous les joueurs |
 
 Lancer un cron à la main :
 
@@ -77,18 +78,21 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://lejeudelamort.fr/api/cron/c
 
 ## Emails à tous les joueurs
 
-`POST /api/admin/broadcast` envoie un email à tous les inscrits dont l'adresse
-est confirmée. Les modèles prêts à l'emploi sont dans `emails/`. Par exemple, pour
-l'ouverture de la saison 2027 (à lancer le 1er janvier) :
+`POST /api/admin/broadcast` envoie un email libre (`{ subject, html }`) à tous les
+inscrits dont l'adresse est confirmée.
+
+L'email d'ouverture de saison part tout seul le 1er janvier (cron
+`/api/cron/nouvelle-saison`) : podium de la saison passée, personnalités mortes
+pendant l'année, invitation à remplir sa salle d'attente. Pour le vérifier avant :
 
 ```bash
-jq -n --arg subject "La saison 2027 est ouverte" \
-      --rawfile html emails/nouvelle-saison-2027.html \
-      '{subject: $subject, html: $html}' \
-| curl -X POST https://lejeudelamort.fr/api/admin/broadcast \
-       -H "Authorization: Bearer $CRON_SECRET" \
-       -H "Content-Type: application/json" \
-       --data @-
+# voir l'email dans le navigateur, sans rien envoyer
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  "https://lejeudelamort.fr/api/cron/nouvelle-saison?saison=2027&html=1" > apercu.html
+
+# le recevoir soi-même (ADMIN_EMAIL)
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  "https://lejeudelamort.fr/api/cron/nouvelle-saison?saison=2027&apercu=1"
 ```
 
 ## Vérifications

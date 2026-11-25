@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/update-photos",
       "schedule": "0 3 * * 1"
+    },
+    {
+      "path": "/api/cron/nouvelle-saison",
+      "schedule": "0 9 1 1 *"
     }
   ]
 }
