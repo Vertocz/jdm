@@ -1,7 +1,7 @@
 // app/api/cron/nouvelle-saison/route.ts
 //
 // Le 1er janvier : email d'ouverture de saison à tous les joueurs (adresse confirmée),
-// avec le podium de la saison passée et les personnalités mortes pendant l'année.
+// avec le vainqueur de la saison passée et les personnalités mortes pendant l'année.
 // Planifié dans vercel.json, après le passage de check-deaths de la nuit.
 //
 // GET /api/cron/nouvelle-saison
@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient, fetchAllRows, isCronAuthorized } from '@/lib/supabaseServerClient';
 import { adressesConfirmees, appUrl, envoyerATous } from '@/lib/envoiGroupe';
-import { mailNouvelleSaison, type MarcheDuPodium, type MortDeLAnnee } from '@/lib/emails/nouvelleSaison';
+import { mailNouvelleSaison, type Vainqueur, type MortDeLAnnee } from '@/lib/emails/nouvelleSaison';
 import { saisonEnCours } from '@/lib/regles';
 
 export const maxDuration = 300;
@@ -32,11 +32,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const saisonPassee = saison - 1;
   const supabase = createServerClient();
 
-  // ── Podium de la saison passée (ex æquo compris) ─────────────────────────
+  // ── Vainqueur(s) de la saison passée (ex æquo compris) ───────────────────
   const { data: classement, error: ce } = await supabase.rpc('classement', { p_saison: saisonPassee });
   if (ce) return NextResponse.json({ error: `Classement : ${ce.message}` }, { status: 500 });
-  const podium = ((classement ?? []) as MarcheDuPodium[])
-    .filter(j => j.rang <= 3 && j.paris_gagnants > 0);
+  const vainqueurs: Vainqueur[] = ((classement ?? []) as (Vainqueur & { rang: number; paris_gagnants: number })[])
+    .filter(j => j.rang === 1 && j.paris_gagnants > 0);
 
   // ── Personnalités mortes pendant la saison passée ────────────────────────
   let morts: MortDeLAnnee[];
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `Décès : ${(err as Error).message}` }, { status: 500 });
   }
 
-  const { subject, html } = mailNouvelleSaison({ saison, podium, morts, url: appUrl() });
+  const { subject, html } = mailNouvelleSaison({ saison, vainqueurs, morts, url: appUrl() });
 
   if (params.get('html') === '1') {
     return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const result = await envoyerATous(destinataires, subject, html);
     console.log(`[nouvelle-saison] ${saison} — envoyés: ${result.sent}, échoués: ${result.failed}`);
-    return NextResponse.json({ saison, podium: podium.length, morts: morts.length, ...result });
+    return NextResponse.json({ saison, vainqueurs: vainqueurs.length, morts: morts.length, ...result });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

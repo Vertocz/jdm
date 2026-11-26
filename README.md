@@ -82,7 +82,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://lejeudelamort.fr/api/cron/c
 inscrits dont l'adresse est confirmée.
 
 L'email d'ouverture de saison part tout seul le 1er janvier (cron
-`/api/cron/nouvelle-saison`) : podium de la saison passée, personnalités mortes
+`/api/cron/nouvelle-saison`) : vainqueur de la saison passée, personnalités mortes
 pendant l'année, invitation à remplir sa salle d'attente. Pour le vérifier avant :
 
 ```bash
